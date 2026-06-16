@@ -1,0 +1,33 @@
+# --- model weights (download / fine-tune locally; do not commit) ---
+models/**/*.pt
+models/*.pt
+*.pt
+*.onnx
+*.engine
+
+# --- Ultralytics training/inference run outputs ---
+runs/
+results/
+
+# --- datasets (images/labels are large; keep structure via .gitkeep) ---
+datasets/**/images/**/*.jpg
+datasets/**/images/**/*.jpeg
+datasets/**/images/**/*.png
+datasets/**/labels/**/*.txt
+datasets/**/test/**
+
+# --- logs / checkpoints ---
+logs/
+*.log
+checkpoint.json
+_records.jsonl
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.DS_Store

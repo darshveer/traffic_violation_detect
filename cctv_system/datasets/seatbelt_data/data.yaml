@@ -1,0 +1,13 @@
+# Seatbelt detection dataset (YOLO format).
+#
+# `path` is the dataset root, set to "." (this file's directory). The fine-tune
+# script (train/finetune_seatbelt.py) resolves it to an absolute path at runtime.
+path: .
+train: images/train
+val: images/val
+test: images/test
+
+nc: 2
+names:
+  0: seatbelt_absent
+  1: seatbelt_present

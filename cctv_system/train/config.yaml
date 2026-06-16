@@ -1,0 +1,50 @@
+# =============================================================================
+# Fine-tuning hyperparameters for the helmet and seatbelt detectors.
+#
+# Both models start from `yolo11n.pt` (Ultralytics COCO-pretrained nano) and are
+# fine-tuned with the Ultralytics trainer. Defaults are tuned to fit an
+# RTX 3060 (8GB VRAM); raise `batch` on larger GPUs.
+# =============================================================================
+
+common:
+  base_weights: models/yolo11n.pt   # transfer-learning starting point
+  imgsz: 640
+  patience: 3                       # early-stopping patience (epochs)
+  optimizer: SGD                    # SGD | Adam | AdamW | auto
+  lr0: 0.001                        # initial learning rate
+  lrf: 0.01                         # final LR fraction (cosine)
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 1.0
+  seed: 42
+  workers: 4
+  cos_lr: true
+  # Data augmentation (transfer learning on small custom sets benefits from
+  # moderate augmentation: horizontal flip, rotation, brightness/HSV jitter).
+  augment:
+    fliplr: 0.5
+    flipud: 0.0
+    degrees: 8.0        # rotation (+/- deg)
+    translate: 0.1
+    scale: 0.5
+    hsv_h: 0.015
+    hsv_s: 0.7
+    hsv_v: 0.4          # brightness jitter
+    mosaic: 1.0
+    mixup: 0.0
+
+helmet:
+  data: datasets/helmet_data/data.yaml
+  epochs: 10
+  batch: 16             # raise to 32 if VRAM allows
+  project: runs/helmet
+  name: finetune
+  out_weights: models/helmet/helmet_finetuned.pt
+
+seatbelt:
+  data: datasets/seatbelt_data/data.yaml
+  epochs: 10
+  batch: 16             # smaller dataset
+  project: runs/seatbelt
+  name: finetune
+  out_weights: models/seatbelt/seatbelt_finetuned.pt

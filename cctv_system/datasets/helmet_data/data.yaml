@@ -1,0 +1,14 @@
+# Helmet detection dataset (YOLO format).
+#
+# `path` is the dataset root. It is set to "." meaning *this file's directory*;
+# the fine-tune script (train/finetune_helmet.py) resolves it to an absolute
+# path at runtime, so you can keep this committed value portable.
+path: .
+train: images/train
+val: images/val
+test: images/test
+
+nc: 2
+names:
+  0: helmet_absent
+  1: helmet_present

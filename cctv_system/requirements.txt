@@ -1,0 +1,36 @@
+# =============================================================================
+# CCTV Traffic Violation Detection — Python dependencies
+#
+# Recommended interpreter: Python 3.11 or 3.12 (Windows + RTX 3060 / CUDA 12.x).
+# Python 3.13/3.14 are NOT recommended yet — torch / paddle wheels lag behind.
+#
+# IMPORTANT (CUDA on Windows): install the CUDA build of PyTorch FIRST, e.g.
+#     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# THEN run:  pip install -r requirements.txt
+# (The bare `torch` line below pulls the CPU build if you skip the step above.)
+# =============================================================================
+
+# --- core deep learning / detection ---
+ultralytics>=8.3.0          # YOLO11 (yolo11n) detection + training + tracking
+torch>=2.2,<2.6             # install the cu121 build separately for GPU (see above)
+torchvision>=0.17
+
+# --- computer vision / numerics ---
+opencv-python>=4.8
+numpy>=1.24,<2.1
+scipy>=1.10                 # Hungarian assignment for SORT tracking
+
+# --- OCR (license plates) ---
+paddleocr>=2.7              # primary OCR backend
+paddlepaddle>=2.6           # CPU build; use paddlepaddle-gpu for CUDA OCR
+# easyocr>=1.7              # optional fallback OCR backend (uncomment to enable)
+
+# --- reports / visualisation ---
+pandas>=2.0
+matplotlib>=3.7
+folium>=0.15               # optional geo heatmaps (image-plane heatmap uses matplotlib)
+PyYAML>=6.0
+tqdm>=4.66
+
+# --- testing ---
+pytest>=7.4

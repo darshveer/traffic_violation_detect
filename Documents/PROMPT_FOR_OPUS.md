@@ -249,35 +249,3 @@ Make the code modular, well-tested, and ready to run on day 1 of the hackathon.
    pip install -r requirements.txt
    python main.py --mode train --data dataset/ --epochs 50
    ```
-
----
-
-## WHAT TO EXPECT
-
-**Claude Opus will generate:**
-- ✅ `data_loader.py` (500 lines) — data pipeline with augmentation
-- ✅ `model_training.py` (800 lines) — training loop with validation
-- ✅ `inference.py` (600 lines) — fast batch inference
-- ✅ `evidence_generator.py` (400 lines) — annotated output + reports
-- ✅ `metrics.py` (300 lines) — evaluation metrics
-- ✅ `main.py` (200 lines) — CLI entry point
-- ✅ `config.json` — hyperparameters
-- ✅ `requirements.txt` — dependencies
-- ✅ `README.md` — full documentation
-
-**Total:** ~3,200 lines of **tested, production-grade code**
-
----
-
-## TIMELINE ESTIMATE
-
-| Phase | Duration | Task |
-|-------|----------|------|
-| **Days 1–2** | ~7 hours | Data sourcing, labeling, curation |
-| **Day 3** | ~4 hours | Claude generates code, install deps, validate on small subset |
-| **Days 4–5** | ~12 hours | Train models (YOLOv8 + ResNet50), tune hyperparameters |
-| **Days 6–7** | ~8 hours | Test on full dataset, optimize inference, generate reports, demo prep |
-| **Buffer** | ~10 hours | Debugging, fine-tuning, edge case handling |
-
-**Total: ~48 hours** ✓
-
