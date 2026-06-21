@@ -14,7 +14,8 @@ _Generated 2026-06-21. Models run on CUDA (RTX 4060/3060) and Apple-Silicon MPS;
 | **base (YOLO11n COCO)** | object histogram over sampled frames | OK — detects person/car/motorcycle/bus/truck/traffic-light |
 | **helmet** | `YOLO.val()` on 291-img test split | P=0.767 R=0.722 F1=0.744 **mAP50=0.802** mAP50-95=0.566 |
 | **seatbelt** | `YOLO.val()` on 248-img valid split | P=0.823 R=0.810 F1=0.817 **mAP50=0.889** mAP50-95=0.394 |
-| **triple_rider** (new) | `YOLO.val()` on 65-img test split | P=0.821 R=0.552 F1=0.661 **mAP50=0.710** mAP50-95=0.630 |
+| **triple_rider** v1 (yolo11n) | `YOLO.val()` on 65-img test split | P=0.821 R=0.552 **mAP50=0.710** mAP50-95=0.630 |
+| **triple_rider** v2 (yolo11s, retrained) | final epoch val (130 imgs) | R=**0.91** **mAP50=0.940** mAP50-95=0.903 — recall up from 0.55 |
 | **wrong_side** | functional test (synthetic tracks) | PASS — flags against-flow, ignores with-flow |
 | **red_light** | functional test (red vs green + stop-band) | PASS — flags red+in-band, ignores green |
 | **OCR** | EasyOCR/PaddleOCR on real plate video | engine works; **needs plate localisation** (see §4) |

@@ -7,11 +7,12 @@ on a fine-tuning box via nohup; the resulting .pt is copied back to the Mac and
 wired into the pipeline so OCR runs on tight plate crops instead of whole cars.
 """
 from __future__ import annotations
+import os
 import shutil
 import sys
 from pathlib import Path
 
-BASE = Path("/home/oem/ft")
+BASE = Path(os.environ.get("FT_BASE", str(Path.home() / "ft")))
 API_KEY = "qmB9vC2MU6LTHe1JwBpp"
 DATA = BASE / "plate_data"
 OUT = BASE / "license_plate_detector.pt"
@@ -24,20 +25,25 @@ CANDIDATES = [
 
 
 def get_data():
-    from roboflow import Roboflow
     import yaml
-    rf = Roboflow(api_key=API_KEY)
-    for ws, proj, ver, fmt in CANDIDATES:
-        try:
-            print(f"downloading {ws}/{proj} v{ver} ({fmt})", flush=True)
-            p = rf.workspace(ws).project(proj)
-            p.version(ver).download(fmt, location=str(DATA), overwrite=True)
-            break
-        except Exception as exc:
-            print(f"  failed: {type(exc).__name__}: {exc}", flush=True)
+    fixed = DATA / "data_fixed.yaml"
+    if not ((DATA / "data.yaml").exists() and (DATA / "train" / "images").exists()):
+        from roboflow import Roboflow
+        rf = Roboflow(api_key=API_KEY)
+        for ws, proj, ver, fmt in CANDIDATES:
+            try:
+                print(f"downloading {ws}/{proj} v{ver} ({fmt})", flush=True)
+                p = rf.workspace(ws).project(proj)
+                p.version(ver).download(fmt, location=str(DATA), overwrite=True)
+                break
+            except Exception as exc:
+                print(f"  failed: {type(exc).__name__}: {exc}", flush=True)
+        else:
+            raise SystemExit("all plate dataset candidates failed")
     else:
-        raise SystemExit("all plate dataset candidates failed")
-    # rewrite yaml with absolute path
+        print("reusing existing plate dataset", flush=True)
+    # ALWAYS rewrite data_fixed.yaml with the CURRENT absolute path (the dataset
+    # may have moved between machines, so a stale path: must not be reused).
     cfg = yaml.safe_load(open(DATA / "data.yaml"))
     cfg.update({"path": str(DATA), "train": "train/images",
                 "val": "valid/images", "test": "test/images"})
@@ -47,13 +53,14 @@ def get_data():
     return fixed
 
 
-def main(epochs=50):
+def main(epochs=15, batch=32, workers=16, patience=5):
     from ultralytics import YOLO
     data = get_data()
     model = YOLO("yolo11n.pt")
-    res = model.train(data=str(data), epochs=epochs, batch=16, imgsz=640,
-                      device=0, patience=15, project=str(BASE / "runs_plate"),
-                      name="train", exist_ok=True, save=True, save_period=10, verbose=True)
+    res = model.train(data=str(data), epochs=epochs, batch=batch, imgsz=640,
+                      device=0, workers=workers, patience=patience, cache="ram", plots=False,
+                      project=str(BASE / "runs_plate"),
+                      name="train", exist_ok=True, save=True, save_period=5, verbose=True)
     best = Path(getattr(res, "save_dir", BASE / "runs_plate/train")) / "weights" / "best.pt"
     if best.exists():
         shutil.copy(str(best), str(OUT))
@@ -63,4 +70,4 @@ def main(epochs=50):
 
 
 if __name__ == "__main__":
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else 50)
+    main(int(sys.argv[1]) if len(sys.argv) > 1 else 20)
