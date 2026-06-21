@@ -33,7 +33,7 @@ def eval_detect():
         ("helmet", PKG / "models/helmet/helmet_finetuned.pt",
          PKG / "datasets/helmet_data", 3, ["helmet", "moto-helmet", "no-helmet"], "test"),
         ("seatbelt", PKG / "models/seatbelt/seatbelt_finetuned.pt",
-         PKG / "datasets/seatbelt_data", 2, ["no-seatbelt", "seatbelt"], "val"),
+         PKG / "datasets/seatbelt_data", 2, ["no-seatbelt", "seatbelt"], "valid"),
         ("triple_rider", PKG / "models/plugins/triple_rider.pt",
          PKG / "datasets/triple_rider_data", 1, ["tripleriding"], "test"),
     ]
@@ -41,9 +41,8 @@ def eval_detect():
     for name, weights, dd, nc, names, split in jobs:
         if not weights.exists():
             print(f"[{name}] weights missing: {weights}"); continue
-        # build a yaml whose chosen split points at the available folder
-        sm = {"train": "train/images", "val": f"{'valid' if split=='val' else split}/images",
-              "test": f"{split}/images"}
+        # build a yaml whose 'test' entry points at the actual folder we evaluate
+        sm = {"train": "train/images", "val": f"{split}/images", "test": f"{split}/images"}
         yml = _fixed_yaml(dd, nc, names, sm)
         m = YOLO(str(weights))
         try:

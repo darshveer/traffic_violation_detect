@@ -1,0 +1,7 @@
+
+# local sync helpers (contain host/credentials — never commit)
+synclinux.sh
+syncwin.sh
+
+synclinux.sh
+syncwin.sh

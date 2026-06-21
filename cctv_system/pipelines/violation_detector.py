@@ -298,13 +298,17 @@ class ViolationDetector:
         min_overlap = float(cfg.get("overlap_ratio", 0.15))
         events: List[Dict] = []
 
+        # Dedicated-model confidence (separate from the generic violation_conf):
+        # the trained triple-rider detector is high-precision but its scores run
+        # lower than COCO models, so a per-plugin threshold keeps recall usable.
+        tr_conf = float(cfg.get("conf", self.violation_conf))
         plugin = self.loader.get("triple_rider")
         if plugin.available:
             names = self._class_names("triple_rider")
             is_coco = ("car" in names.values() or len(names) == 80)
             if not is_coco:
-                for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
-                    if d["conf"] >= self.violation_conf:
+                for d in self._predict(plugin.model, frame, tr_conf)[0]:
+                    if d["conf"] >= tr_conf:
                         events.append(self._event("triple_rider", d["conf"], d["box"]))
                 return events
 
@@ -545,14 +549,34 @@ class ViolationDetector:
         return n.startswith("no ")
 
     def _read_plates(self, frame: np.ndarray, vehicles: List[Dict], det_index: Dict) -> str:
-        """OCR vehicle crops and attach plate text; return the first plate found."""
+        """OCR vehicle plates and attach text; return the first plate found.
+
+        If a ``plate_detector`` model is loaded, plates are first localised within
+        each vehicle crop and OCR runs on the tight plate region (far more
+        accurate than OCR-ing the whole vehicle). Otherwise the whole vehicle
+        crop is passed to OCR as a fallback.
+        """
         if self.ocr is None or not getattr(self.ocr, "available", False):
             return ""
+        plate_det = self.loader.get("plate_detector")
         first_plate = ""
         for veh in vehicles:
             if ID_TO_NAME.get(veh["cls_id"]) not in self.ocr_run_on:
                 continue
-            text = self.ocr.read_plate(crop(frame, veh["box"], pad=0.05))
+            vcrop = crop(frame, veh["box"], pad=0.05)
+            if vcrop.size == 0:
+                continue
+            text = ""
+            if plate_det.available:
+                # Localise plate(s) inside the vehicle crop; OCR highest-conf one.
+                preds = self._predict(plate_det.model, vcrop, self.base_conf)[0]
+                for d in sorted(preds, key=lambda x: -x["conf"]):
+                    t = self.ocr.read_plate(crop(vcrop, d["box"], pad=0.12))
+                    if t:
+                        text = t
+                        break
+            else:
+                text = self.ocr.read_plate(vcrop)
             if text:
                 rec = det_index.get(id(veh))
                 if rec:

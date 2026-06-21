@@ -8,6 +8,7 @@ models:
   triple_rider: models/plugins/triple_rider.pt
   red_light: models/plugins/red_light_yolov8m.pt
   wrong_side: null
+  plate_detector: models/plugins/license_plate_detector.pt
   helmet_plugin: models/plugins/helmet_haiderzm.pt
 thresholds:
   base_conf: 0.35
@@ -18,6 +19,7 @@ thresholds:
 triple_rider:
   min_riders: 3
   overlap_ratio: 0.15
+  conf: 0.35   # confidence threshold for the dedicated triple-rider model
 red_light:
   stop_line:
   - 0.0

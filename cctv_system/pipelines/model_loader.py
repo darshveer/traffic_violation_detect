@@ -29,7 +29,9 @@ logger = setup_logging()
 
 # Logical models and whether they are mandatory (core) or optional plug-ins.
 CORE_MODELS = ("base", "helmet", "seatbelt")
-PLUGIN_MODELS = ("triple_rider", "red_light", "wrong_side")
+# Optional plug-ins: violation models + a license-plate detector that localises
+# plates within vehicle crops so OCR runs on tight plate regions (not whole cars).
+PLUGIN_MODELS = ("triple_rider", "red_light", "wrong_side", "plate_detector")
 
 
 @dataclass
