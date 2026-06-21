@@ -1,0 +1,9 @@
+path: C:\Users\Darsh Veer Singh\Documents\GitHub\traffic_violation_detect\cctv_system\datasets\helmet_data
+train: train/images
+val: test/images
+test: test/images
+nc: 3
+names:
+- helmet
+- moto-helmet
+- no-helmet

@@ -263,7 +263,7 @@ class ViolationDetector:
         violations += self._detect_triple_riding(frame, motorcycles, persons, det_index)
         violations += self._detect_red_light(frame, lights, vehicles, det_index)
         if use_tracking:
-            violations += self._detect_wrong_side(vehicles, det_index)
+            violations += self._detect_wrong_side(frame, vehicles, det_index)
         violations += self._detect_helmet(frame, motorcycles, persons)
         violations += self._detect_seatbelt(frame, vehicles)
 
@@ -376,23 +376,45 @@ class ViolationDetector:
                     )
         return events
 
-    def _detect_wrong_side(self, vehicles: List[Dict], det_index: Dict) -> List[Dict]:
-        """Flag tracked vehicles moving opposite the allowed direction.
+    def _detect_wrong_side(self, frame: np.ndarray, vehicles: List[Dict], det_index: Dict) -> List[Dict]:
+        """Flag tracked vehicles moving opposite the allowed direction of travel.
+
+        Wrong-side driving is *camera-geometry specific*: the legal direction of
+        travel depends on the road/lane layout in the camera view, so the allowed
+        direction must be calibrated per camera (``wrong_side.allowed_direction``;
+        see ``scripts/calibrate_wrong_side.py`` to estimate it from a clip).
+
+        To suppress false positives this requires, over a sliding window of a
+        track's centroids: (1) sufficient net displacement, (2) the *net* heading
+        opposing the allowed direction, and (3) the *per-step* motion consistently
+        opposing it (so a wiggling/parked vehicle is not flagged). By default only
+        four-wheelers are considered (motorcycles excluded), configurable.
 
         Plug-in override: a ``wrong_side`` model's detections are used directly.
-        Otherwise SORT tracks are analysed for sustained opposing motion.
         """
         events: List[Dict] = []
         plugin = self.loader.get("wrong_side")
         if plugin.available:
-            # Plug-in expects a frame; handled in infer_frame variants if needed.
-            return events
+            names = self._class_names("wrong_side")
+            is_coco = ("car" in names.values() or len(names) == 80)
+            if not is_coco:
+                for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
+                    if d["conf"] >= self.violation_conf:
+                        events.append(self._event("wrong_side_driving", d["conf"], d["box"]))
+                return events
 
         cfg = self.config.get("wrong_side", {})
         allowed = np.array(cfg.get("allowed_direction", [0.0, 1.0]), dtype=np.float32)
         allowed = allowed / (np.linalg.norm(allowed) + 1e-9)
         min_frames = int(cfg.get("min_track_frames", 8))
         min_disp = float(cfg.get("min_displacement", 40))
+        align_thr = float(cfg.get("alignment_threshold", 0.5))   # net heading vs allowed
+        step_consistency = float(cfg.get("step_consistency", 0.7))  # fraction of opposing steps
+        ignore_classes = set(cfg.get("ignore_classes", ["motorcycle", "bicycle"]))
+        roi = cfg.get("roi")  # optional [x1,y1,x2,y2] normalised band
+
+        h, w = frame.shape[:2]
+        roi_px = [roi[0] * w, roi[1] * h, roi[2] * w, roi[3] * h] if roi else None
 
         det_array = np.array(
             [[*v["box"], v["cls_id"]] for v in vehicles], dtype=np.float32
@@ -400,21 +422,46 @@ class ViolationDetector:
         tracks = self.tracker.update(det_array)
 
         for trk in tracks:
-            if trk.age < min_frames:
+            if ID_TO_NAME.get(trk.cls_id) in ignore_classes:
                 continue
-            dx, dy = trk.motion_vector(window=min_frames)
+            if len(trk.centroids) < min_frames:
+                continue
+            # ROI gate: vehicle centre must be inside the configured road band.
+            if roi_px is not None:
+                cx, cy = box_center(trk.box.tolist())
+                if not (roi_px[0] <= cx <= roi_px[2] and roi_px[1] <= cy <= roi_px[3]):
+                    continue
+
+            recent = trk.centroids[-min_frames:]
+            dx = recent[-1][0] - recent[0][0]
+            dy = recent[-1][1] - recent[0][1]
             disp = float(np.hypot(dx, dy))
             if disp < min_disp:
                 continue
-            heading = np.array([dx, dy], dtype=np.float32) / (disp + 1e-9)
-            alignment = float(np.dot(heading, allowed))
-            if alignment < -0.6:  # moving against allowed direction
-                conf = min(0.99, 0.6 + 0.39 * min(1.0, -alignment))
-                if conf >= self.violation_conf:
-                    events.append(
-                        self._event("wrong_side_driving", conf, trk.box.tolist(),
-                                    track_id=trk.id, cls=ID_TO_NAME.get(trk.cls_id))
-                    )
+            net_align = float(np.dot(np.array([dx, dy]) / (disp + 1e-9), allowed))
+            if net_align >= -align_thr:
+                continue
+            # Per-step consistency: fraction of steps moving against allowed.
+            opposing = 0
+            steps = 0
+            for (x0, y0), (x1, y1) in zip(recent[:-1], recent[1:]):
+                sdx, sdy = x1 - x0, y1 - y0
+                sd = float(np.hypot(sdx, sdy))
+                if sd < 1e-3:
+                    continue
+                steps += 1
+                if float(np.dot(np.array([sdx, sdy]) / sd, allowed)) < 0:
+                    opposing += 1
+            if steps == 0 or (opposing / steps) < step_consistency:
+                continue
+
+            conf = min(0.99, 0.6 + 0.39 * min(1.0, -net_align))
+            if conf >= self.violation_conf:
+                rec_box = trk.box.tolist()
+                events.append(
+                    self._event("wrong_side_driving", conf, rec_box,
+                                track_id=trk.id, cls=ID_TO_NAME.get(trk.cls_id))
+                )
         return events
 
     def _detect_helmet(
@@ -475,10 +522,27 @@ class ViolationDetector:
             best = max(crop_preds, key=lambda d: d["conf"])
             cls_name = names.get(best["cls_id"], "")
             conf = best["conf"]
-            is_absent = "absent" in cls_name or cls_name == absent_key
+            is_absent = self._is_absence_class(cls_name)
             vtype = absent_key if is_absent else f"{kind}_present"
             events.append(self._event(vtype, conf, box, cls=kind, is_violation=is_absent))
         return events
+
+    @staticmethod
+    def _is_absence_class(cls_name: str) -> bool:
+        """Whether a helmet/seatbelt class name denotes the *violation* (absence).
+
+        Trained datasets label the violation many ways: ``no-helmet``,
+        ``no_seatbelt``, ``without helmet``, ``helmet_absent``, ``not wearing``.
+        Presence classes (``helmet``, ``moto-helmet``, ``seatbelt``) are not
+        violations. Normalising punctuation lets one check cover all of them.
+        """
+        n = cls_name.lower().replace("_", " ").replace("-", " ").strip()
+        absence_tokens = ("absent", "without", "no helmet", "nohelmet",
+                          "no seatbelt", "no seat belt", "not wearing", "missing")
+        if any(t in n for t in absence_tokens):
+            return True
+        # Leading "no " (e.g. "no helmet", "no seatbelt") => absence/violation.
+        return n.startswith("no ")
 
     def _read_plates(self, frame: np.ndarray, vehicles: List[Dict], det_index: Dict) -> str:
         """OCR vehicle crops and attach plate text; return the first plate found."""

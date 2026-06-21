@@ -1,0 +1,7 @@
+path: C:\Users\Darsh Veer Singh\Documents\GitHub\traffic_violation_detect\cctv_system\datasets\triple_rider_data
+train: train/images
+val: valid/images
+test: test/images
+nc: 1
+names:
+- tripleriding

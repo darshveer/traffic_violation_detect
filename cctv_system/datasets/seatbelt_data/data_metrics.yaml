@@ -1,0 +1,8 @@
+path: C:\Users\Darsh Veer Singh\Documents\GitHub\traffic_violation_detect\cctv_system\datasets\seatbelt_data
+train: train/images
+val: valid/images
+test: val/images
+nc: 2
+names:
+- no-seatbelt
+- seatbelt

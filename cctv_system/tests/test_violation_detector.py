@@ -292,3 +292,22 @@ class TestBuildSummary:
         assert summary["helmet_absent"] == pytest.approx(0.9)
         assert summary["triple_rider"] == pytest.approx(0.8)
         assert summary["license_plate"] == "KA01AB1234"
+
+
+class TestAbsenceClassMapping:
+    """Class-name -> violation (absence) mapping for helmet/seatbelt models."""
+
+    @pytest.mark.parametrize("name", [
+        "no-helmet", "no_helmet", "no helmet", "without helmet", "helmet_absent",
+        "no-seatbelt", "no_seatbelt", "no seatbelt", "not wearing seatbelt", "missing helmet",
+    ])
+    def test_absence_classes(self, name):
+        from pipelines.violation_detector import ViolationDetector
+        assert ViolationDetector._is_absence_class(name) is True
+
+    @pytest.mark.parametrize("name", [
+        "helmet", "moto-helmet", "seatbelt", "with helmet", "wearing seatbelt",
+    ])
+    def test_presence_classes(self, name):
+        from pipelines.violation_detector import ViolationDetector
+        assert ViolationDetector._is_absence_class(name) is False

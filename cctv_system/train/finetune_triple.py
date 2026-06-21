@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parent.parent
+if str(PKG) not in sys.path:
+    sys.path.insert(0, str(PKG))
 DATA_DIR = PKG / "datasets" / "triple_rider_data"
 OUT = PKG / "models" / "plugins" / "triple_rider.pt"
 
