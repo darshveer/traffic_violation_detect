@@ -108,13 +108,13 @@ def select_device(requested: str = "auto") -> str:
     Parameters
     ----------
     requested : str
-        ``"auto"``, ``"cuda"``, ``"cuda:N"`` or ``"cpu"``.
+        ``"auto"``, ``"cuda"``, ``"cuda:N"``, ``"mps"`` or ``"cpu"``.
 
     Returns
     -------
     str
         A concrete device string usable by torch / Ultralytics
-        (``"cuda:0"`` / ``"cpu"`` ...).
+        (``"cuda:0"`` / ``"mps"`` / ``"cpu"`` ...).
     """
     logger = logging.getLogger("cctv")
     try:
@@ -124,12 +124,23 @@ def select_device(requested: str = "auto") -> str:
         return "cpu"
 
     cuda_ok = torch.cuda.is_available()
+    mps_ok = bool(getattr(torch.backends, "mps", None)) and torch.backends.mps.is_available()
     req = (requested or "auto").lower()
 
     if req == "cpu":
         return "cpu"
     if req == "auto":
-        return "cuda:0" if cuda_ok else "cpu"
+        # Prefer CUDA, then Apple-Silicon MPS, else CPU.
+        if cuda_ok:
+            return "cuda:0"
+        if mps_ok:
+            return "mps"
+        return "cpu"
+    if req == "mps":
+        if mps_ok:
+            return "mps"
+        logger.warning("MPS requested but not available; falling back to CPU.")
+        return "cpu"
     # explicit cuda request
     if req.startswith("cuda"):
         if cuda_ok:

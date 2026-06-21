@@ -143,7 +143,7 @@ class TestViolationDetectorInit:
             det = ViolationDetector(model_loader=loader, ocr_handler=mock_ocr)
 
         assert det is not None
-        assert det.device in ("cpu", "cuda:0", "cuda")
+        assert det.device in ("cpu", "cuda:0", "cuda", "mps")
 
     def test_config_loaded(self):
         from pipelines.violation_detector import ViolationDetector
