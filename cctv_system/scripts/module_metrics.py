@@ -121,11 +121,15 @@ def eval_ocr(video, max_frames=30):
     dev = select_device("auto")
     print(f"\n========== OCR METRICS ({video}) ==========")
     m = YOLO(str(PKG / "models" / "yolo11n.pt"))
-    ocr = OCRHandler(use_gpu=(dev != "cpu"), min_conf=0.3)
+    ocr = OCRHandler(use_gpu=(dev != "cpu"), min_conf=0.25)
     print(f"OCR backend: {ocr.backend}")
+    # Optional plate detector -> localise plates before OCR.
+    plate_path = PKG / "models/plugins/license_plate_detector.pt"
+    plate = YOLO(str(plate_path)) if plate_path.exists() else None
+    print(f"plate_detector: {'loaded' if plate else 'absent (whole-vehicle OCR)'}")
     veh_ids = {COCO_CLASSES[c] for c in VEHICLE_CLASSES}
     cap = cv2.VideoCapture(video)
-    n = 0; vehicles_seen = 0; plates = []
+    n = 0; vehicles_seen = 0; plates_loc = 0; reads = []
     while n < max_frames:
         ok, fr = cap.read()
         if not ok:
@@ -134,16 +138,32 @@ def eval_ocr(video, max_frames=30):
         r = m.predict(fr, device=dev, conf=0.4, verbose=False)[0]
         xy = r.boxes.xyxy.cpu().numpy(); cl = r.boxes.cls.cpu().numpy().astype(int)
         for i in range(len(cl)):
-            if cl[i] in veh_ids:
-                vehicles_seen += 1
-                text = ocr.read_plate(crop(fr, xy[i].tolist(), pad=0.05))
-                if text:
-                    plates.append(text)
+            if cl[i] not in veh_ids:
+                continue
+            vehicles_seen += 1
+            vcrop = crop(fr, xy[i].tolist(), pad=0.05)
+            if vcrop.size == 0:
+                continue
+            if plate is not None:
+                pr = plate.predict(vcrop, device=dev, conf=0.25, verbose=False)[0]
+                pbx = pr.boxes.xyxy.cpu().numpy()
+                pcf = pr.boxes.conf.cpu().numpy()
+                order = pcf.argsort()[::-1]
+                for j in order:
+                    plates_loc += 1
+                    t = ocr.read_plate(crop(vcrop, pbx[j].tolist(), pad=0.12))
+                    if t:
+                        reads.append(t); break
+            else:
+                t = ocr.read_plate(vcrop)
+                if t:
+                    reads.append(t)
     cap.release()
-    rate = len(plates) / max(1, vehicles_seen)
-    print(f"frames={n} vehicle_crops={vehicles_seen} plates_read={len(plates)} "
-          f"read_rate={rate:.2%}")
-    print(f"sample plates: {plates[:25]}")
+    denom = plates_loc if plate is not None else vehicles_seen
+    rate = len(reads) / max(1, denom)
+    print(f"frames={n} vehicle_crops={vehicles_seen} plates_localised={plates_loc} "
+          f"plates_read={len(reads)} read_rate={rate:.2%}")
+    print(f"sample plates: {reads[:25]}")
 
 
 if __name__ == "__main__":

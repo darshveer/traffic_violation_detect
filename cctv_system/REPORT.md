@@ -51,10 +51,16 @@ _Generated 2026-06-21. Models run on CUDA (RTX 4060/3060) and Apple-Silicon MPS;
 - The OCR **engine works** (EasyOCR/PaddleOCR initialise and read text), but the pipeline
   was OCR-ing the **whole vehicle box**, so on a 1440p ANPR clip it read 13/419 crops,
   mostly garbage — the plate is a tiny part of a car crop.
-- **Fix (in progress):** a dedicated **license-plate detector** localises the plate inside
-  each vehicle crop, then OCR runs on the tight plate region. Integrated into `_read_plates`
+- **Fix:** a dedicated **license-plate detector** localises the plate inside each vehicle
+  crop, then OCR runs on the tight plate region. Integrated into `_read_plates`
   (`models.plate_detector`); falls back to whole-vehicle OCR when absent. A YOLO11n plate
-  detector is fine-tuning on the RTX 3060 (Roboflow `license-plate-recognition-rxg4e`, 21k imgs).
+  detector was fine-tuned on the RTX 3060 (Roboflow `license-plate-recognition-rxg4e`, 21k imgs).
+- **Measured improvement** on the 1440p ANPR clip (EasyOCR on the Mac): plate localisation
+  lifted the read-rate from **3.1% (garbage) → 17.5%** with a **1-epoch** detector, and
+  consistent real plates began to appear across frames (e.g. `NAIJNRU`, `GXIS0GJ`). This climbs
+  further as the detector trains to convergence and with **PaddleOCR** (better than EasyOCR for
+  plates, available on the Py≤3.12 boxes). The detector continues training; pull the final
+  `best.pt` from the box into `models/plugins/license_plate_detector.pt`.
 
 ### Other fine-tuning recommendations
 | Item | Issue | Action (fits in budget) |
