@@ -7,6 +7,8 @@ a progress callback for the UI.
 from __future__ import annotations
 
 import datetime as _dt
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -31,6 +33,30 @@ def _fmt(seconds: float) -> str:
     return f"{s // 60:02d}:{s % 60:02d}"
 
 
+def _encode_h264(raw: Path, out: Path) -> bool:
+    """Transcode the raw annotated video to browser-playable H.264 via ffmpeg.
+
+    Falls back to the raw mp4v file if ffmpeg is unavailable. Returns True if an
+    annotated video exists at ``out``.
+    """
+    ff = shutil.which("ffmpeg")
+    if ff and raw.exists():
+        try:
+            subprocess.run(
+                [ff, "-y", "-i", str(raw), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                 "-movflags", "+faststart", "-loglevel", "error", str(out)],
+                check=True,
+            )
+            raw.unlink(missing_ok=True)
+            return True
+        except Exception:
+            pass
+    if raw.exists():  # no ffmpeg: serve the raw file (may not play in all browsers)
+        raw.replace(out)
+        return True
+    return False
+
+
 def analyze_video(
     video_path: str,
     out_dir: str,
@@ -52,6 +78,13 @@ def analyze_video(
     frames_dir = Path(out_dir) / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
+    # Annotated video: kept frames written at fps/skip -> SAME duration as the
+    # source, so the UI timeline stays aligned. Encoded H.264 below for browsers.
+    out_fps = max(1.0, fps / max(1, skip_frames))
+    raw_path = Path(out_dir) / "annotated_raw.mp4"
+    writer = cv2.VideoWriter(str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"),
+                             out_fps, (meta["width"], meta["height"]))
+
     open_clusters: Dict[str, Dict] = {}
     events: List[Dict] = []
     counts: Dict[str, int] = {}
@@ -71,6 +104,10 @@ def analyze_video(
         if plate:
             plates[plate] = plates.get(plate, 0) + 1
 
+        # one annotated frame per kept frame -> annotated video + reused snapshots
+        ann = annotate_frame(frame, result["detections"], _fmt(ts_sec), active)
+        writer.write(ann)
+
         seen_types = set()
         for v in active:
             vtype = v["type"]
@@ -88,7 +125,6 @@ def analyze_video(
             else:
                 _close(vtype)
                 snap = f"frames/{vtype}_{idx:06d}.jpg"
-                ann = annotate_frame(frame, result["detections"], _fmt(ts_sec), active)
                 cv2.imwrite(str(Path(out_dir) / snap), ann)
                 open_clusters[vtype] = {
                     "type": vtype,
@@ -110,6 +146,8 @@ def analyze_video(
 
     for ctype in list(open_clusters):
         _close(ctype)
+    writer.release()
+    annotated_ok = _encode_h264(raw_path, Path(out_dir) / "annotated.mp4")
     events.sort(key=lambda e: e["start"])
 
     # finalize event display fields
@@ -124,6 +162,7 @@ def analyze_video(
 
     top_plates = sorted(plates.items(), key=lambda x: -x[1])[:10]
     return {
+        "annotated": bool(annotated_ok),
         "meta": {
             "fps": round(fps, 2),
             "width": meta["width"], "height": meta["height"],

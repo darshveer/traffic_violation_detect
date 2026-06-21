@@ -32,16 +32,18 @@ except Exception:
     pass
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from analyzer import analyze_video
 
-UPLOADS = ROOT / "uploads"
-RESULTS = ROOT / "results"
-JOBS = ROOT / "jobs"
+# Runtime data dir (override with DATA_DIR; e.g. /tmp on read-only hosts like HF Spaces).
+DATA = Path(os.environ.get("DATA_DIR", str(ROOT)))
+UPLOADS = DATA / "uploads"
+RESULTS = DATA / "results"
+JOBS = DATA / "jobs"
 for d in (UPLOADS, RESULTS, JOBS):
-    d.mkdir(exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Traffic Violation Detection")
 
@@ -106,6 +108,10 @@ def _run_job(job_id: str, src_kind: str, src: str, skip: int):
 
         result = analyze_video(str(video), str(out_dir), det, skip_frames=skip, progress_cb=progress)
         result["video_url"] = f"/api/jobs/{job_id}/video"
+        if result.get("annotated"):
+            result["annotated_url"] = f"/api/jobs/{job_id}/annotated"
+        result["csv_url"] = f"/api/jobs/{job_id}/report.csv"
+        result["pdf_url"] = f"/api/jobs/{job_id}/report.pdf"
         _set(job_id, status="done", progress=100.0, message="Done", result=result)
     except Exception as exc:  # noqa: BLE001
         import traceback
@@ -137,8 +143,7 @@ async def analyze(youtube_url: str = Form(None), skip_frames: int = Form(8),
     return {"job_id": job_id}
 
 
-@app.get("/api/jobs/{job_id}")
-async def job_status(job_id: str):
+def _get_state(job_id: str) -> dict:
     st = JOBS_STATE.get(job_id)
     if st is None:
         p = JOBS / f"{job_id}.json"
@@ -146,7 +151,44 @@ async def job_status(job_id: str):
             st = json.loads(p.read_text())
         else:
             raise HTTPException(404, "Job not found")
-    return JSONResponse(st)
+    return st
+
+
+@app.get("/api/jobs/{job_id}")
+async def job_status(job_id: str):
+    return JSONResponse(_get_state(job_id))
+
+
+@app.get("/api/jobs/{job_id}/annotated")
+async def job_annotated(job_id: str):
+    p = RESULTS / job_id / "annotated.mp4"
+    if not p.exists():
+        raise HTTPException(404, "Annotated video not found")
+    return FileResponse(str(p))
+
+
+@app.get("/api/jobs/{job_id}/report.csv")
+async def job_csv(job_id: str):
+    result = (_get_state(job_id) or {}).get("result")
+    if not result:
+        raise HTTPException(404, "No result yet")
+    from report_export import to_csv
+    return Response(to_csv(result), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="violations_{job_id}.csv"'})
+
+
+@app.get("/api/jobs/{job_id}/report.pdf")
+async def job_pdf(job_id: str):
+    st = _get_state(job_id) or {}
+    result = st.get("result")
+    if not result:
+        raise HTTPException(404, "No result yet")
+    from report_export import build_pdf
+    pdf = RESULTS / job_id / "report.pdf"
+    if not pdf.exists():
+        build_pdf(result, str(RESULTS / job_id), str(pdf), source=st.get("source", ""))
+    return FileResponse(str(pdf), media_type="application/pdf",
+                        filename=f"violations_{job_id}.pdf")
 
 
 def _range_file(path: Path, request_range: str | None):
@@ -180,4 +222,4 @@ app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

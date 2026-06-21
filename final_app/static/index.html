@@ -83,6 +83,15 @@
     padding:4px 9px;border-radius:999px}
   .err{background:#3b1320;border:1px solid #7f1d1d;color:#fecaca;border-radius:12px;padding:14px;margin-top:18px}
   .empty{color:var(--muted);text-align:center;padding:30px}
+  .vidbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--txt);cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);padding:7px 12px;border-radius:10px}
+  .toggle input{accent-color:var(--accent);width:16px;height:16px}
+  .dl{font-size:13px;font-weight:700;text-decoration:none;color:#fff;padding:8px 14px;border-radius:10px;
+    border:1px solid var(--line);background:var(--panel2)}
+  .dl:hover{border-color:var(--accent2)}
+  .dl.pdf{background:linear-gradient(135deg,#dc2626,#b91c1c);border-color:transparent}
+  .dl.csv{background:linear-gradient(135deg,#15803d,#166534);border-color:transparent}
 </style>
 </head>
 <body>
@@ -132,6 +141,12 @@
   <div id="results" class="hidden">
     <div class="grid">
       <div class="card">
+        <div class="vidbar">
+          <label class="toggle" id="annWrap" style="display:none"><input type="checkbox" id="annToggle"/> Show annotations</label>
+          <span style="flex:1"></span>
+          <a class="dl csv" id="dlcsv" target="_blank" rel="noopener">⬇ CSV</a>
+          <a class="dl pdf" id="dlpdf" target="_blank" rel="noopener">⬇ PDF</a>
+        </div>
         <video id="player" controls playsinline></video>
         <div class="timeline" id="timeline"></div>
         <div class="stats" id="stats"></div>
@@ -219,6 +234,14 @@ function render(d) {
   const v = $("#player"); v.src = d.video_url; v.load();
   const dur = d.meta.duration || 1;
 
+  // annotated toggle + downloads
+  const annWrap = $("#annWrap"), annT = $("#annToggle");
+  annT.checked = false;
+  if (d.annotated_url) { annWrap.style.display = ""; annT.onchange = swapSrc; }
+  else { annWrap.style.display = "none"; }
+  $("#dlcsv").href = d.csv_url || "#";
+  $("#dlpdf").href = d.pdf_url || "#";
+
   // stats
   const bt = d.summary.by_type;
   $("#stats").innerHTML =
@@ -272,6 +295,17 @@ function drawGallery() {
         <div class="conf">confidence ${(e.peak_conf*100).toFixed(0)}%${e.plate? ' · <span class="plate">'+e.plate+'</span>':''}</div>
       </div>
     </div>`).join("");
+}
+
+function swapSrc() {
+  const v = $("#player"), t = v.currentTime, playing = !v.paused;
+  v.src = $("#annToggle").checked ? DATA.annotated_url : DATA.video_url;
+  v.load();
+  v.addEventListener("loadedmetadata", function once() {
+    try { v.currentTime = t; } catch(e){}
+    if (playing) v.play().catch(()=>{});
+    v.removeEventListener("loadedmetadata", once);
+  });
 }
 
 function seek(t) { const v = $("#player"); v.currentTime = Math.max(0, t - 0.3); v.play().catch(()=>{}); window.scrollTo({top:0,behavior:"smooth"}); }

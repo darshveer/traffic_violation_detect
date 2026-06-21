@@ -18,3 +18,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 yt-dlp
+reportlab        # PDF report export
+# NOTE: ffmpeg (system package) is needed to encode the H.264 annotated video.
+#   macOS: brew install ffmpeg   |   Ubuntu: sudo apt install ffmpeg
+# Without it, the annotated video falls back to mp4v (may not play in all browsers).

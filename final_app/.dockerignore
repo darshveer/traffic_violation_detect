@@ -1,0 +1,26 @@
+# Ignore python virtual environments
+venv/
+.venv/
+env/
+
+# Ignore cache directories
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Ignore local run artifacts and uploads
+uploads/*
+results/*
+jobs/*
+
+# Ignore local configuration/logs
+*.log
+.DS_Store
+
+# Ignore git repository details
+.git/
+.gitignore
+.github/
