@@ -311,3 +311,26 @@ class TestAbsenceClassMapping:
     def test_presence_classes(self, name):
         from pipelines.violation_detector import ViolationDetector
         assert ViolationDetector._is_absence_class(name) is False
+
+
+class TestPlateAssociation:
+    """Violations get the plate of the vehicle they best overlap."""
+
+    def test_associates_by_overlap(self):
+        from pipelines.violation_detector import ViolationDetector
+        viol = [
+            {"type": "helmet_absent", "box": [100, 100, 140, 200], "plate": None},
+            {"type": "red_light_violation", "box": [300, 300, 400, 360], "plate": None},
+            {"type": "wrong_side_driving", "box": [700, 700, 760, 760], "plate": None},
+        ]
+        recs = [([90, 90, 160, 260], "KA01AB1234"), ([295, 295, 410, 365], "MH12CD5678")]
+        ViolationDetector._associate_plates(viol, recs)
+        assert viol[0]["plate"] == "KA01AB1234"   # rider -> motorcycle plate
+        assert viol[1]["plate"] == "MH12CD5678"   # car -> own plate
+        assert viol[2]["plate"] is None           # no nearby plate -> unset
+
+    def test_no_records_noop(self):
+        from pipelines.violation_detector import ViolationDetector
+        viol = [{"type": "helmet_absent", "box": [0, 0, 10, 10], "plate": None}]
+        ViolationDetector._associate_plates(viol, [])
+        assert viol[0]["plate"] is None

@@ -45,7 +45,7 @@ wrong_side:
 ocr:
   enabled: true
   lang: en
-  min_plate_conf: 0.5
+  min_plate_conf: 0.4
   run_on:
   - car
   - motorcycle

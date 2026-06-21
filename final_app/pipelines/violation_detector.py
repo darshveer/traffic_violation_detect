@@ -267,8 +267,9 @@ class ViolationDetector:
         violations += self._detect_helmet(frame, motorcycles, persons)
         violations += self._detect_seatbelt(frame, vehicles)
 
-        # --- license plates (attach to vehicle detections) --------------
-        plate_text = self._read_plates(frame, vehicles, det_index)
+        # --- license plates (attach to vehicle detections + violations) -
+        plate_text, plate_records = self._read_plates(frame, vehicles, det_index)
+        self._associate_plates(violations, plate_records)
 
         summary = self._build_summary(violations, plate_text)
         counts: Dict[str, int] = {}
@@ -557,9 +558,10 @@ class ViolationDetector:
         crop is passed to OCR as a fallback.
         """
         if self.ocr is None or not getattr(self.ocr, "available", False):
-            return ""
+            return "", []
         plate_det = self.loader.get("plate_detector")
         first_plate = ""
+        plate_records: List = []   # (vehicle_box, plate_text) for violation association
         for veh in vehicles:
             if ID_TO_NAME.get(veh["cls_id"]) not in self.ocr_run_on:
                 continue
@@ -581,9 +583,32 @@ class ViolationDetector:
                 rec = det_index.get(id(veh))
                 if rec:
                     rec["plate"] = text
+                plate_records.append((veh["box"], text))
                 if not first_plate:
                     first_plate = text
-        return first_plate
+        return first_plate, plate_records
+
+    @staticmethod
+    def _associate_plates(violations: List[Dict], plate_records: List) -> None:
+        """Tag each violation with the plate of the vehicle it best overlaps.
+
+        Matches a violation's box to the plate-bearing vehicle box with the
+        greatest mutual overlap (so a helmet violation on a rider gets the plate
+        of the motorcycle the rider sits on, a red-light car gets its own plate).
+        """
+        if not plate_records:
+            return
+        for v in violations:
+            if v.get("plate"):
+                continue
+            vb = v["box"]
+            best_text, best_ov = "", 0.0
+            for pbox, text in plate_records:
+                ov = max(overlap_ratio(vb, pbox), overlap_ratio(pbox, vb))
+                if ov > best_ov:
+                    best_ov, best_text = ov, text
+            if best_ov >= 0.15:
+                v["plate"] = best_text
 
     def _any_red_light(self, frame: np.ndarray, lights: List[Dict]) -> bool:
         """Whether any traffic-light crop is predominantly red (HSV heuristic)."""
