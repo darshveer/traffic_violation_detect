@@ -47,7 +47,7 @@ class OCRHandler:
         try:
             from paddleocr import PaddleOCR
 
-            self._engine = PaddleOCR(use_angle_cls=True, lang=self.lang, show_log=False)
+            self._engine = PaddleOCR(use_angle_cls=True, lang=self.lang)
             self._backend = "paddleocr"
             logger.info("OCRHandler: PaddleOCR initialised (lang=%s).", self.lang)
             return

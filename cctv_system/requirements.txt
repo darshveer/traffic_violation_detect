@@ -29,8 +29,16 @@ paddlepaddle>=2.6           # CPU build; use paddlepaddle-gpu for CUDA OCR
 pandas>=2.0
 matplotlib>=3.7
 folium>=0.15               # optional geo heatmaps (image-plane heatmap uses matplotlib)
+plotly>=5.18               # interactive heatmap with hover info (falls back to matplotlib if absent)
 PyYAML>=6.0
 tqdm>=4.66
 
 # --- testing ---
 pytest>=7.4
+
+# --- plugin downloads (optional, needed for scripts/download_plugins.py) ---
+# gdown>=4.7               # Google Drive downloader (haiderzm helmet plugin)
+#                          # Install: pip install gdown
+# roboflow>=1.1            # Roboflow API (kashishparmar02 triple-rider plugin)
+#                          # Install: pip install roboflow
+

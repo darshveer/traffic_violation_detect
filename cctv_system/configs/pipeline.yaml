@@ -1,85 +1,52 @@
-# =============================================================================
-# Pipeline configuration for the CCTV Traffic Violation Detection system.
-#
-# All paths are resolved relative to the `cctv_system/` package root unless an
-# absolute path is given. Tuned defaults target a Windows + RTX 3060 (8GB VRAM).
-# =============================================================================
-
-# ---------------------------------------------------------------------------
-# Device / runtime
-# ---------------------------------------------------------------------------
-device: auto            # auto | cuda | cuda:0 | cpu  (auto -> cuda if available)
-half: false             # use FP16 inference on CUDA (saves VRAM, small speedup)
-imgsz: 640              # inference image size for the base detector
-
-# ---------------------------------------------------------------------------
-# Model weight paths (relative to the package root).
-# `base`, `helmet`, `seatbelt` are core models.
-# The remaining entries are OPTIONAL plug-in slots: if the weight file is
-# missing the system falls back to built-in logic on top of the base detector.
-# ---------------------------------------------------------------------------
+device: auto
+half: false
+imgsz: 640
 models:
-  base:        models/yolo11n.pt                 # auto-downloaded if absent
-  helmet:      models/helmet/helmet_finetuned.pt
-  seatbelt:    models/seatbelt/seatbelt_finetuned.pt
-  triple_rider: null                             # optional plug-in (.pt) or null
-  red_light:    null                             # optional plug-in (.pt) or null
-  wrong_side:   null                             # optional plug-in (.pt) or null
-
-# ---------------------------------------------------------------------------
-# Confidence thresholds. A violation is only reported above its threshold.
-# ---------------------------------------------------------------------------
+  base: models/yolo11n.pt
+  helmet: models/helmet/helmet_finetuned.pt
+  seatbelt: models/seatbelt/seatbelt_finetuned.pt
+  triple_rider: null
+  red_light: models/plugins/red_light_yolov8m.pt
+  wrong_side: null
+  helmet_plugin: models/plugins/helmet_haiderzm.pt
 thresholds:
-  base_conf: 0.35         # base detector NMS confidence
-  iou: 0.5                # base detector NMS IoU
-  violation_conf: 0.6     # minimum confidence to *report* a violation
+  base_conf: 0.35
+  iou: 0.5
+  violation_conf: 0.6
   helmet_conf: 0.5
   seatbelt_conf: 0.5
-
-# ---------------------------------------------------------------------------
-# Violation-specific parameters
-# ---------------------------------------------------------------------------
 triple_rider:
-  min_riders: 3           # >= this many persons on one motorcycle == violation
-  overlap_ratio: 0.15     # min person/motorcycle box overlap to count as a rider
-
+  min_riders: 3
+  overlap_ratio: 0.15
 red_light:
-  # Stop-line ROI in NORMALISED image coords [x1, y1, x2, y2] (0-1). Vehicles
-  # whose box crosses below y of this band while the light is red are flagged.
-  stop_line: [0.0, 0.55, 1.0, 0.65]
-  red_hsv_ratio: 0.18     # fraction of red pixels in the light crop -> "red"
-
+  stop_line:
+  - 0.0
+  - 0.55
+  - 1.0
+  - 0.65
+  red_hsv_ratio: 0.18
 wrong_side:
-  # Allowed travel direction as a unit-ish vector in image space (dx, dy).
-  # +y points DOWN (towards the camera/bottom). A track moving opposite this
-  # for `min_track_frames` is flagged.
-  allowed_direction: [0.0, 1.0]
+  allowed_direction:
+  - 0.0
+  - 1.0
   min_track_frames: 8
-  min_displacement: 40     # pixels of net travel before judging direction
-
-# ---------------------------------------------------------------------------
-# OCR (license plate)
-# ---------------------------------------------------------------------------
+  min_displacement: 40
 ocr:
   enabled: true
   lang: en
   min_plate_conf: 0.5
-  run_on: [car, motorcycle, bus, truck]   # vehicle classes to OCR
-
-# ---------------------------------------------------------------------------
-# Video inference
-# ---------------------------------------------------------------------------
+  run_on:
+  - car
+  - motorcycle
+  - bus
+  - truck
 video:
-  skip_frames: 5            # process every (skip_frames)-th frame
-  checkpoint_every: 200     # write a resume checkpoint every N processed frames
+  skip_frames: 5
+  checkpoint_every: 200
   write_annotated: true
-  save_frames: true         # also dump individual annotated frames
-
-# ---------------------------------------------------------------------------
-# Tracking
-# ---------------------------------------------------------------------------
+  save_frames: true
 tracking:
-  backend: sort             # sort | bytetrack  (bytetrack uses Ultralytics)
+  backend: sort
   max_age: 30
   min_hits: 3
   iou_threshold: 0.3

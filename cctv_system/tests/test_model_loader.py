@@ -5,9 +5,20 @@ but the loader must degrade gracefully (plug-ins -> built-in mode, core -> off)
 rather than raising.
 """
 
+import sys
 import textwrap
+from unittest.mock import patch
+
+import pytest
 
 from pipelines.model_loader import CORE_MODELS, PLUGIN_MODELS, ModelLoader
+
+
+@pytest.fixture(autouse=True)
+def mock_yolo_fail():
+    with patch("ultralytics.YOLO", side_effect=RuntimeError("Mocked load failure")):
+        yield
+
 
 
 def _write_config(tmp_path, body):

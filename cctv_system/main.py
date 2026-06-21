@@ -79,7 +79,7 @@ def run_infer(args: argparse.Namespace) -> None:
         from evidence.annotate import annotate_frame
 
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        annotated = annotate_frame(result["frame"], result["detections"], result["timestamp"])
+        annotated = annotate_frame(result["frame"], result["detections"], result["timestamp"], result["violations"])
         cv2.imwrite(str(Path(out_dir) / "annotated.jpg"), annotated)
 
         record = {k: result[k] for k in ("frame_id", "timestamp", "summary", "violations", "counts")}
@@ -87,9 +87,15 @@ def run_infer(args: argparse.Namespace) -> None:
         logger.info("Image inference complete. Violations: %s", record["counts"])
         logger.info("Reports: %s", paths)
 
+        if args.show:
+            cv2.imshow("CCTV Traffic Violation Detection", annotated)
+            logger.info("Showing annotated image. Press any key in the popup window to close.")
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
     if args.video:
         out = detector.infer_video(
-            args.video, out_dir, skip_frames=args.skip_frames, resume=not args.no_resume
+            args.video, out_dir, skip_frames=args.skip_frames, resume=not args.no_resume, show=args.show
         )
         w, h = int(out["video"]["width"]), int(out["video"]["height"])
         paths = generate_reports(out["records"], out_dir, frame_size=(w, h))
@@ -138,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", help="Output directory.")
     parser.add_argument("--skip_frames", type=int, default=None, help="Process every Nth frame.")
     parser.add_argument("--no_resume", action="store_true", help="Ignore any video checkpoint.")
+    parser.add_argument("--show", action="store_true", help="Show live popup window during inference.")
 
     # train
     parser.add_argument(

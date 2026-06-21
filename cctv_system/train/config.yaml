@@ -7,7 +7,12 @@
 # =============================================================================
 
 common:
-  base_weights: models/yolo11n.pt   # transfer-learning starting point
+  # Starting weights for fine-tuning (transfer learning).
+  # If you have run `python scripts/download_plugins.py --plugins helmet`, you
+  # can warm-start from the haiderzm/Helmet-Detection YOLOv5 best.pt for a
+  # better initialization than raw COCO yolo11n.pt. Otherwise leave as-is.
+  base_weights: models/yolo11n.pt    # COCO pretrained YOLO11n
+  # helmet_plugin_weights: models/plugins/helmet_haiderzm.pt  # uncomment after download
   imgsz: 640
   patience: 3                       # early-stopping patience (epochs)
   optimizer: SGD                    # SGD | Adam | AdamW | auto

@@ -173,26 +173,135 @@ def generate_heatmap(
     frame_size: tuple[int, int] = (1920, 1080),
     bins: int = 48,
 ) -> None:
-    """Render a 2-D spatial heatmap of violation centres as PNG + HTML.
+    """Render an interactive spatial heatmap of violation centres.
 
-    Uses a matplotlib 2-D histogram of violation bounding-box centres over the
-    frame plane (CCTV frames carry no GPS, so this is image-space density). The
-    PNG is embedded into a standalone ``heatmap.html``.
+    Tries Plotly first (hover info: violation type, count, timestamp).
+    Falls back to a matplotlib PNG embedded in HTML if Plotly is absent.
 
     Parameters
     ----------
     rows : list of dict
-        Violation rows.
+        Violation rows (from :func:`records_to_rows`).
     out_html : Path
-        Output HTML path; the PNG is written alongside it.
+        Output HTML path; a PNG is written alongside for the matplotlib fallback.
     frame_size : tuple[int, int]
         ``(width, height)`` used to scale the plane.
     bins : int
         Histogram resolution per axis.
     """
+    out_html.parent.mkdir(parents=True, exist_ok=True)
+
+    # ── Try Plotly (interactive, hover info) ─────────────────────────────────
+    try:
+        import plotly.graph_objects as go  # type: ignore[import]
+        _generate_heatmap_plotly(rows, out_html, frame_size, bins)
+        return
+    except ImportError:
+        logger.debug("plotly not installed; falling back to matplotlib heatmap.")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Plotly heatmap failed (%s); falling back to matplotlib.", exc)
+
+    # ── Fallback: matplotlib PNG-in-HTML ─────────────────────────────────────
+    _generate_heatmap_matplotlib(rows, out_html, frame_size, bins)
+
+
+def _generate_heatmap_plotly(
+    rows: List[Dict],
+    out_html: Path,
+    frame_size: tuple[int, int],
+    bins: int,
+) -> None:
+    """Interactive Plotly density heatmap with per-cell hover tooltips.
+
+    Each cell in the histogram grid shows:
+    - Total violation count
+    - Breakdown by violation type (e.g. helmet_absent×3, triple_rider×1)
+    - First/last timestamp in the cell
+    """
+    import plotly.graph_objects as go  # type: ignore[import]
+    import numpy as np
+
+    w, h = frame_size
+    xs = np.array([(r["bbox_x1"] + r["bbox_x2"]) / 2.0 for r in rows], dtype=np.float64)
+    ys = np.array([(r["bbox_y1"] + r["bbox_y2"]) / 2.0 for r in rows], dtype=np.float64)
+
+    # Build per-cell metadata for hover text.
+    cell_w = w / bins
+    cell_h = h / bins
+    from collections import defaultdict, Counter
+    cell_data: dict = defaultdict(lambda: {"types": [], "timestamps": []})
+    for r in rows:
+        cx = (r["bbox_x1"] + r["bbox_x2"]) / 2.0
+        cy = (r["bbox_y1"] + r["bbox_y2"]) / 2.0
+        gi = min(int(cx / cell_w), bins - 1)
+        gj = min(int(cy / cell_h), bins - 1)
+        cell_data[(gi, gj)]["types"].append(r.get("violation_type", "unknown"))
+        cell_data[(gi, gj)]["timestamps"].append(str(r.get("timestamp", "")))
+
+    if len(xs) == 0:
+        # Empty — write a placeholder page.
+        html = (
+            "<!doctype html><html><head><meta charset='utf-8'>"
+            "<title>Violation Heatmap</title></head><body>"
+            "<h2>Violation Spatial Heatmap</h2><p>No violations detected.</p>"
+            "</body></html>"
+        )
+        out_html.write_text(html, encoding="utf-8")
+        logger.info("Wrote empty heatmap: %s", out_html)
+        return
+
+    # 2-D histogram: count per cell.
+    counts, xedges, yedges = np.histogram2d(xs, ys, bins=bins,
+                                             range=[[0, w], [0, h]])
+    counts = counts.T  # transpose so rows=y, cols=x (image convention)
+
+    # Build hover text grid.
+    hover = np.full(counts.shape, "", dtype=object)
+    for (gi, gj), cdata in cell_data.items():
+        if gi >= bins or gj >= bins:
+            continue
+        type_counts = Counter(cdata["types"])
+        breakdown = "<br>".join(f"  {t}: {c}" for t, c in type_counts.most_common())
+        ts_sample = cdata["timestamps"][0] if cdata["timestamps"] else ""
+        hover[gj, gi] = (
+            f"Cell ({gi},{gj})<br>"
+            f"Total: {int(counts[gj, gi])}<br>"
+            f"{breakdown}<br>"
+            f"First seen: {ts_sample}"
+        )
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=counts,
+            x=xedges[:-1],
+            y=yedges[:-1],
+            colorscale="Inferno",
+            text=hover,
+            hovertemplate="%{text}<extra></extra>",
+            colorbar={"title": "Violation count"},
+        )
+    )
+    fig.update_layout(
+        title=f"Violation Spatial Density — {len(rows)} violations",
+        xaxis_title="x (px)",
+        yaxis_title="y (px)",
+        yaxis_autorange="reversed",   # image origin top-left
+        template="plotly_dark",
+        margin={"l": 60, "r": 20, "t": 60, "b": 60},
+    )
+    fig.write_html(str(out_html), include_plotlyjs="cdn", full_html=True)
+    logger.info("Wrote interactive heatmap (Plotly): %s", out_html)
+
+
+def _generate_heatmap_matplotlib(
+    rows: List[Dict],
+    out_html: Path,
+    frame_size: tuple[int, int],
+    bins: int,
+) -> None:
+    """Fallback: static matplotlib 2-D histogram embedded as PNG in HTML."""
     try:
         import matplotlib
-
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import numpy as np
@@ -200,23 +309,21 @@ def generate_heatmap(
         logger.warning("matplotlib/numpy unavailable; skipping heatmap (%s).", exc)
         return
 
-    out_html.parent.mkdir(parents=True, exist_ok=True)
     png_path = out_html.with_suffix(".png")
-
     xs = [(r["bbox_x1"] + r["bbox_x2"]) / 2.0 for r in rows]
     ys = [(r["bbox_y1"] + r["bbox_y2"]) / 2.0 for r in rows]
     w, h = frame_size
 
     fig, ax = plt.subplots(figsize=(10, 6))
     if xs:
-        heat, _, _, im = ax.hist2d(xs, ys, bins=bins, range=[[0, w], [0, h]], cmap="inferno")
+        _, _, _, im = ax.hist2d(xs, ys, bins=bins, range=[[0, w], [0, h]], cmap="inferno")
         fig.colorbar(im, ax=ax, label="violation count")
     else:
         ax.text(0.5, 0.5, "No violations", ha="center", va="center", transform=ax.transAxes)
     ax.set_title("Violation spatial density (image plane)")
     ax.set_xlabel("x (px)")
     ax.set_ylabel("y (px)")
-    ax.invert_yaxis()  # image coords: y grows downward
+    ax.invert_yaxis()
     fig.tight_layout()
     fig.savefig(png_path, dpi=120)
     plt.close(fig)
@@ -231,7 +338,8 @@ def generate_heatmap(
         "</body></html>"
     )
     out_html.write_text(html, encoding="utf-8")
-    logger.info("Wrote heatmap: %s", out_html)
+    logger.info("Wrote heatmap (matplotlib fallback): %s", out_html)
+
 
 
 # --------------------------------------------------------------------------- #

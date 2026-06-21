@@ -1,251 +1,377 @@
-# PROMPT FOR CLAUDE OPUS 4.6
-## Build CCTV Traffic Violation Detection System
+# UPDATED PROMPT FOR CLAUDE OPUS 4.6
+## Building CCTV System with Existing Open-Source Models
 
 ---
 
-**COPY EVERYTHING BELOW AND PASTE INTO CLAUDE OPUS 4.6 (either via claude.ai Pro or API)**
+**COPY AND PASTE THIS ENTIRE PROMPT INTO CLAUDE OPUS 4.6**
 
 ---
 
 ```
-You are an expert ML engineer tasked with building a production-ready CCTV traffic violation detection system. The system must:
+You are an expert ML systems engineer tasked with building a production-grade CCTV traffic violation detection system by integrating open-source models and minimizing training time.
 
-1. **Detect traffic violations** from video/image frames using a two-stage pipeline
-2. **Generate court-ready evidence** with annotated frames and metadata
-3. **Run at 15+ FPS** on GPU and produce actionable reports
-4. **Be deployable and tested** within 48 hours
+## CORE STRATEGY
 
-## CONTEXT
+Instead of training from scratch, you will:
+1. Integrate pre-trained violation detection models from open-source repos
+2. Fine-tune ONLY helmet & seatbelt detection on custom Indian CCTV data (~1-2 epochs each)
+3. Build a unified inference pipeline that chains all models together
+4. Generate court-ready evidence (annotated frames + reports)
 
-- **Dataset:** 2,000–5,000 images (helmet, seatbelt violations; some from BDD100K, some manually curated from YouTube)
-- **Deadline:** 48-hour hackathon (code must be production-ready, tested, and reproducible)
-- **Target hardware:** NVIDIA GPU (RTX 3060+ preferred), CPU fallback supported
-- **Deployment:** Jupyter notebook or Python script (no web UI required)
-- **Evaluation:** mAP ≥0.65, F1 ≥0.70, latency <100ms per frame
+This approach reduces GPU time from 40+ hours to ~2.5 hours while maintaining >70% accuracy.
 
-## DELIVERABLES
+## MODEL SELECTION (FINAL DECISION)
 
-Your code MUST include:
+### Use As-Is (No Training):
+- **YOLOv8n** (Ultralytics) → Base vehicle/person detection
+- **Triple Riding** → kashishparmar02 pre-trained model (6K images, ready)
+- **Red-Light Violation** → MohammedHamza0 pretrained YOLOv8 (ROI-based)
+- **Wrong-Side Driving** → sriramcu YOLOv4 + Kalman filtering (pretrained)
+- **License Plate OCR** → PaddleOCR (industry-standard, no retraining)
 
-1. **data_loader.py**
-   - Load images from `dataset/images/{train,val,test}`
-   - Load labels from YOLO format (`dataset/labels/`)
-   - Data augmentation pipeline (Albumentations)
-   - Class balance checking and oversampling
+### Fine-Tune on Custom Data (1-2 epochs each):
+- **Helmet Detection** → Start from haiderzm/Helmet-Detection (YOLOv5, 350 epochs pre-trained)
+  - Fine-tune on 500 custom Indian motorcycle images (~30 min GPU)
+- **Seatbelt Detection** → Start from sankethsj/seatbelt-detection (YOLOv5)
+  - Fine-tune on 300 custom car interior images (~20 min GPU)
 
-2. **model_training.py**
-   - YOLOv8n for detection (vehicle/person bboxes)
-   - ResNet50 fine-tuning for violation classification
-   - Training loop with validation, early stopping, checkpointing
-   - Logging and loss tracking (save plots)
+## PROJECT STRUCTURE
 
-3. **inference.py**
-   - Load trained detection + classification models
-   - Process video frames or images
-   - Batch inference for speed
-   - Output: JSON metadata + annotated images
-   - Frame skipping (every 5th frame) for real-time performance
+```
+cctv_system/
+├── models/
+│   ├── helmet/                    # Fine-tuned from haiderzm
+│   ├── seatbelt/                  # Fine-tuned from sankethsj
+│   ├── yolov8n_base.pt            # YOLOv8 nano weights
+│   └── [other pretrained weights]
+├── pipelines/
+│   ├── violation_detector.py      # Main inference class (chains all models)
+│   ├── model_loader.py            # Load 6 models efficiently
+│   ├── inference_utils.py         # Batch processing, frame skipping
+│   └── tracking.py                # SORT/DeepSort for vehicle tracking
+├── evidence/
+│   ├── annotate.py                # Draw bboxes + violation labels + confidence
+│   ├── report_generator.py        # CSV violations + JSON metadata + heatmap
+│   └── ocr_handler.py             # PaddleOCR integration for license plates
+├── train/
+│   ├── finetune_helmet.py         # Fine-tune helmet model on custom data
+│   ├── finetune_seatbelt.py       # Fine-tune seatbelt model on custom data
+│   └── config.yaml                # Training hyperparameters
+├── datasets/
+│   ├── helmet_data/
+│   │   ├── images/train/
+│   │   ├── images/val/
+│   │   ├── labels/train/
+│   │   ├── labels/val/
+│   │   └── data.yaml              # YOLO format, 2 classes: helmet_absent, helmet_present
+│   ├── seatbelt_data/
+│   │   └── [same structure]
+│   └── test_data/
+├── main.py                        # CLI entry point
+├── requirements.txt
+└── README.md
+```
 
-4. **evidence_generator.py**
-   - Draw bboxes + violation labels + confidence on frames
-   - Generate violation reports (CSV: timestamp, location, violation_type, confidence)
-   - Create heatmap of violations (folium or matplotlib)
-   - Summary statistics: violations per hour, top violation types, spatial distribution
+## DELIVERABLES (DETAILED SPECS)
 
-5. **metrics.py**
-   - Compute precision, recall, F1, mAP on test set
-   - Confusion matrix
-   - Per-class metrics (helmet vs seatbelt etc.)
-   - Latency benchmarks (FPS, memory usage)
+### 1. model_loader.py
+- Load all 6 models (pretrained + fine-tuned) with error handling
+- Cache models in GPU memory (reuse across frames for speed)
+- Support CPU fallback for each model independently
+- Log which models are loaded and from where
 
-6. **main.py**
-   - Unified entry point: train or infer
-   - Example: `python main.py --mode train --data dataset/`
-   - Example: `python main.py --mode infer --video sample.mp4 --output results/`
+### 2. pipelines/violation_detector.py
+- Class: `ViolationDetector`
+- Methods:
+  - `infer_frame(frame)`: Run all 6 violation detectors on single frame
+    - Returns dict with detections, violation counts, confidence scores
+  - `infer_video(video_path, output_path)`: Process video with frame skipping
+    - Skip every 5th frame for speed (0.8 FPS predictions on 4 FPS input)
+    - Support resume from checkpoint (in case of crash)
+  - `infer_image(image_path)`: Single image inference
+  - `batch_infer(crops, model_name)`: Batch inference for speed (8-16 crops at once)
 
-## ARCHITECTURE DETAILS
+- Violation types returned:
+  ```python
+  {
+    'helmet_absent': confidence,
+    'helmet_present': confidence,
+    'seatbelt_absent': confidence,
+    'seatbelt_present': confidence,
+    'triple_rider': confidence,
+    'red_light_violation': confidence,
+    'wrong_side_driving': confidence,
+    'license_plate': detected_text
+  }
+  ```
 
-### Detection Stage (YOLOv8n)
-- Input: 640×640 RGB image
-- Output: Bboxes of vehicles and riders (class: car, motorcycle, truck, pedestrian, rider)
-- Model: YOLOv8n (nano) for speed; can switch to YOLOv8s if accuracy is poor
-- Training: 50–100 epochs on 2K–5K images
-- Expected accuracy: mAP50 ≥0.70
+### 3. train/finetune_helmet.py
+- Load pre-trained weights from haiderzm/Helmet-Detection
+- Fine-tune on custom dataset (datasets/helmet_data/)
+- Training config:
+  - epochs: 10 (transfer learning = fewer epochs)
+  - batch_size: 32
+  - learning_rate: 0.001
+  - patience: 3 (early stopping)
+  - optimizer: SGD or Adam
+- Output: Save fine-tuned model to models/helmet/helmet_finetuned.pt
+- Log metrics: precision, recall, F1, mAP per epoch
 
-### Classification Stage (ResNet50)
-- Input: Cropped region from detection (128×128 or 256×256)
-- Output: Violation class (helmet_absent, helmet_present, seatbelt_absent, seatbelt_present, triple_rider, normal_riding)
-- Model: ResNet50, pretrained on ImageNet, fine-tuned for 30–50 epochs
-- Expected accuracy: F1 ≥0.75 per class
+### 4. train/finetune_seatbelt.py
+- Identical structure to helmet fine-tuning
+- Load pre-trained weights from sankethsj/seatbelt-detection
+- Fine-tune on datasets/seatbelt_data/
+- Config:
+  - epochs: 10
+  - batch_size: 16 (smaller dataset)
+  - patience: 3
+- Output: Save to models/seatbelt/seatbelt_finetuned.pt
 
-### Inference Pipeline
-1. Load frame from video
-2. Run YOLOv8n → get rider/driver bboxes
-3. Crop regions around detected persons
-4. Run ResNet50 classifier on crops
-5. Store results: bbox coords, violation type, confidence score
-6. Annotate and save frame
+### 5. evidence/annotate.py
+- Draw bounding boxes on frames with:
+  - Violation label (e.g., "helmet_absent")
+  - Confidence score (e.g., 0.87)
+  - Timestamp
+  - Color coding: RED for violations, GREEN for normal
+- Support batch annotation (multiple frames)
+- Output: annotated images/video
 
-### Optimizations
-- Frame skip: Process every 5th frame (4 FPS input → 0.8 FPS predictions, 30–40ms latency acceptable for CCTV)
-- Batch inference: Collect 8–16 crops, classify in one forward pass
-- Quantization: INT8 YOLOv8 for 30% speedup (optional)
-- GPU memory: <4GB with batch_size=16
+### 6. evidence/report_generator.py
+- Generate CSV report:
+  ```csv
+  frame_id,timestamp,violation_type,confidence,bbox_x1,bbox_y1,bbox_x2,bbox_y2,license_plate
+  0,2024-12-05 10:30:01,helmet_absent,0.87,100,150,150,200,KA-01-AB-1234
+  1,2024-12-05 10:30:02,seatbelt_absent,0.92,200,180,280,300,
+  ...
+  ```
+- Generate JSON metadata (same data, structured)
+- Generate heatmap (folium or matplotlib):
+  - Spatial distribution of violations
+  - Color intensity = violation frequency
+  - Hover info = violation type + count
+- Generate summary stats:
+  - Violations per type (count + percentage)
+  - Peak violation hours
+  - Top locations
+  - Metrics (precision, recall, F1, mAP if test data provided)
+
+### 7. main.py (CLI Interface)
+Commands:
+```bash
+python main.py --mode train \
+  --helmet_data datasets/helmet_data/ \
+  --seatbelt_data datasets/seatbelt_data/ \
+  --epochs 10 \
+  --batch_size 32
+
+python main.py --mode infer \
+  --video sample.mp4 \
+  --output results/ \
+  --skip_frames 5
+
+python main.py --mode infer \
+  --image sample.jpg \
+  --output results/
+
+python main.py --mode eval \
+  --test_data datasets/test_data/ \
+  --output results/metrics/
+```
 
 ## DATA FORMAT SPECIFICATIONS
 
-**Input data structure:**
+### Input: YOLO Format
 ```
-dataset/
+datasets/helmet_data/
 ├── images/
 │   ├── train/
+│   │   ├── img_001.jpg
+│   │   ├── img_002.jpg
+│   │   └── ...
 │   ├── val/
 │   └── test/
 ├── labels/
 │   ├── train/
+│   │   ├── img_001.txt  → "0 0.5 0.5 0.3 0.4"  (class x_center y_center w h)
+│   │   └── ...
 │   ├── val/
 │   └── test/
-├── data.yaml (YOLO format)
-└── README.md (class descriptions)
+└── data.yaml (REQUIRED)
 ```
 
-**YOLO label format (txt files):**
-```
-<class_id> <x_center> <y_center> <width> <height>
-# Example: 0 0.5 0.5 0.3 0.4
-```
-
-**Classes (in data.yaml):**
+**data.yaml:**
 ```yaml
-nc: 6
+path: /absolute/path/to/helmet_data/
+train: images/train
+val: images/val
+test: images/test
+nc: 2
 names:
   0: helmet_absent
   1: helmet_present
-  2: seatbelt_absent
-  3: seatbelt_present
-  4: triple_rider
-  5: normal_riding
 ```
 
-**Output format (JSON metadata):**
-```json
-{
-  "frame_id": 0,
-  "timestamp": "2024-12-05T10:30:45.123Z",
-  "detections": [
-    {
-      "bbox": [100, 150, 150, 200],
-      "violation_type": "helmet_absent",
-      "confidence": 0.87,
-      "location": {"x": 125, "y": 175}
-    }
-  ],
-  "frame_violations_count": 1
-}
+### Output: Annotated + Reports
+```
+results/
+├── annotated_video.mp4        # Video with violations highlighted
+├── annotated_frames/
+│   ├── frame_0000.jpg
+│   ├── frame_0005.jpg
+│   └── ...
+├── violations_metadata.json   # All detections (JSON)
+├── violations_report.csv      # All detections (CSV)
+├── heatmap.html              # Spatial distribution
+├── summary_stats.json        # Aggregate metrics
+└── metrics/
+    ├── confusion_matrix.png
+    ├── precision_recall_curve.png
+    └── metrics.json (precision, recall, F1, mAP)
 ```
 
-## TESTING & VALIDATION
+## IMPLEMENTATION NOTES
 
-1. **Unit tests for data loading** (check class balance, bbox validity)
-2. **Test on held-out set** (compute mAP, F1, confusion matrix)
-3. **Run on sample video** (5–10 min CCTV footage or YouTube video)
-4. **Benchmark performance** (FPS, latency, GPU memory)
-5. **Visual inspection** (manually check 20 annotated frames for false positives)
+### Speed Optimizations:
+- Frame skipping: Process every 5th frame (reduces latency by 5×)
+- Batch inference: Collect 8-16 crops, classify in one forward pass (2-3× speedup)
+- Model caching: Load models once, reuse across all frames
+- GPU memory management: Monitor memory, fall back to CPU if needed
 
-## DEPENDENCIES
+### Accuracy Improvements:
+- Use pre-trained weights (they're already optimized)
+- Fine-tune on 1-2 epochs (prevents overfitting, saves GPU time)
+- Data augmentation on custom data (flip, rotate, brightness adjust)
+- Confidence thresholding: Only report violations with confidence > 0.6
 
-Required libraries (generate requirements.txt):
-```
-torch>=2.0
-torchvision>=0.15
-ultralytics>=8.0  # YOLOv8
-timm>=0.9.0  # ResNet50 from timm
-albumentations>=1.3
-opencv-python>=4.8
-numpy>=1.24
-pandas>=2.0
-matplotlib>=3.7
-seaborn>=0.12
-folium>=0.14
-scikit-learn>=1.3
-tqdm>=4.66
-```
+### Robustness:
+- Handle missing frames gracefully
+- Support both video and image inputs
+- Fallback to CPU if GPU unavailable
+- Error logging for all model failures
+- Checkpointing for long videos (resume from checkpoint)
 
-## IMPORTANT CONSTRAINTS
+## DATASETS & MODELS TO DOWNLOAD
 
-1. **No external APIs** (no cloud services; everything runs locally)
-2. **No pretrained violation classifiers** (must train your own ResNet50, but can use YOLO8n detection weights)
-3. **Reproducible** (set random seeds, save/load checkpoints, log everything)
-4. **Tested** (must run without errors on a fresh GPU with your dataset)
-5. **Well-documented** (docstrings for all functions, config file for hyperparameters)
+**Before coding, user should have:**
+1. Pre-trained weights:
+   - haiderzm/Helmet-Detection → best.pt
+   - sankethsj/seatbelt-detection → best.pt
+   - kashishparmar02/triple-rider-detection → best.pt
+   - MohammedHamza0/Traffic-Signal-Violation → best.pt
+   - sriramcu/yolov4_wrong_side_driving → weights.pt
+   - YOLOv8n (auto-download from Ultralytics)
 
-## EXPECTED OUTCOMES (48H TARGET)
+2. Custom fine-tuning data:
+   - datasets/helmet_data/  (500 images, YOLO format)
+   - datasets/seatbelt_data/ (300 images, YOLO format)
 
-- **Accuracy:** mAP ≥0.65 (detection) + F1 ≥0.70 (classification)
-- **Speed:** 15–30 FPS on GPU (RTX 3060 or better)
+3. Sample test data:
+   - datasets/test_data/ (200 images for evaluation)
+   - sample_traffic.mp4 (5-10 min video for demo)
+
+## EXPECTED PERFORMANCE
+
+- **Accuracy:** mAP ≥ 0.70 (helmet + seatbelt after fine-tuning)
+- **Speed:** 15-30 FPS on GPU (RTX 3060+), 2-5 FPS on CPU
 - **Latency:** <100ms per frame
-- **Output:** 
-  - Annotated video/images with violations highlighted
-  - CSV report of all violations
-  - Spatial heatmap of violations
-  - Summary stats (count by type, count by hour, etc.)
-  - Metrics JSON (precision, recall, F1, confusion matrix)
+- **Memory:** <4GB GPU VRAM (batch_size=16)
+- **Output:** Annotated video + CSV + JSON + heatmap
 
-## CODE STYLE
+## CODE QUALITY REQUIREMENTS
 
-- Use type hints for all functions
-- Add docstrings (NumPy style)
-- Use config files (JSON or YAML) for hyperparameters
-- Organize code into separate modules (not one monolithic script)
-- Add error handling and logging
-- Use relative paths or environment variables for dataset paths
+- Type hints for all functions
+- Docstrings (NumPy style) for all classes/methods
+- Config files (YAML) for hyperparameters
+- Modular design (separate files for each concern)
+- Comprehensive error handling and logging
+- Unit tests for data loading, model loading, inference
 
-## EXAMPLE USAGE
+## EXAMPLE USAGE FLOW
 
 ```bash
-# Training
-python main.py --mode train --data dataset/ --epochs 50 --batch_size 32 --lr 0.001
+# Day 1: Setup + download models
+# Clone repos manually or via script
+# Download datasets
 
-# Inference on video
-python main.py --mode infer --video sample.mp4 --weights yolov8n.pt --classifier_weights resnet50.pt --output results/
+# Day 2: Fine-tune
+python train/finetune_helmet.py --epochs 10 --batch_size 32
+python train/finetune_seatbelt.py --epochs 10 --batch_size 16
 
-# Inference on image
+# Day 3: Test inference
 python main.py --mode infer --image sample.jpg --output results/
 
-# Evaluation
-python main.py --mode eval --data dataset/ --weights yolov8n.pt --classifier_weights resnet50.pt
+# Day 4: Run on video
+python main.py --mode infer --video sample.mp4 --output results/ --skip_frames 5
+
+# Day 5: Generate reports + metrics
+python evidence/report_generator.py --metadata results/violations_metadata.json
+python main.py --mode eval --test_data datasets/test_data/
 ```
 
-## ADDITIONAL NOTES
+## KEY DELIVERABLES (MUST HAVE)
 
-- This is for a hackathon, so polish matters: clean code, clear logging, reproducible results
-- You may assume access to a GPU; but provide CPU fallback
-- If dataset is small (<1K images), use aggressive augmentation and pretrained weights
-- If dataset is large (>5K images), train from scratch or use transfer learning
-- Submit a Jupyter notebook OR Python scripts + requirements.txt + README
+1. ✅ model_loader.py (load 6 models with caching)
+2. ✅ violation_detector.py (unified inference pipeline)
+3. ✅ finetune_helmet.py (fine-tuning script)
+4. ✅ finetune_seatbelt.py (fine-tuning script)
+5. ✅ annotate.py (draw violations on frames)
+6. ✅ report_generator.py (CSV + JSON + heatmap)
+7. ✅ main.py (CLI interface with train/infer/eval modes)
+8. ✅ requirements.txt (all dependencies)
+9. ✅ README.md (setup, usage, model attribution)
+10. ✅ config.yaml (hyperparameters for fine-tuning)
 
-Now, **generate the complete, production-ready code** for all modules above. Start with data_loader.py, then model_training.py, then inference.py, then evidence_generator.py, and finally main.py. Include a config.json for hyperparameters and a comprehensive README.md.
+## IMPORTANT: MODEL ATTRIBUTION
 
-Make the code modular, well-tested, and ready to run on day 1 of the hackathon.
+In README.md, list all open-source models used and their sources:
+- YOLOv8 (Ultralytics)
+- Helmet Detection (haiderzm)
+- Seatbelt Detection (sankethsj)
+- Triple Rider (kashishparmar02)
+- Red-Light (MohammedHamza0)
+- Wrong-Side (sriramcu)
+- PaddleOCR (PaddlePaddle)
+
+This is NOT plagiarism—this is how professional systems are built. Credit all sources.
+
+## DELIVERABLE FORMAT
+
+Generate complete, production-ready code for all modules above. Code should:
+- Run immediately after `pip install -r requirements.txt`
+- Support both training and inference modes
+- Include comprehensive logging and error handling
+- Work on GPU and CPU (with graceful degradation)
+- Be fully documented with docstrings and comments
+
+Start with model_loader.py, then violation_detector.py, then the fine-tuning scripts, then evidence generation, then main.py.
 ```
 
 ---
 
 ## HOW TO USE THIS PROMPT
 
-1. **Copy the prompt above** (from `You are an expert ML engineer...` to the end)
-2. **Paste into Claude Opus 4.6:**
-   - Via **claude.ai**: Paste into a new chat, use Claude 3.5 Sonnet (or pay for Opus if available)
-   - Via **Claude API**: Use `claude-opus-4-6` model with your API key
-3. **Let it generate the full codebase** (will output 3,000–5,000 lines of production code)
-4. **Save outputs to files**:
-   ```bash
-   mkdir cctv_system
-   cd cctv_system
-   # Save Claude's output files here
-   ```
-5. **Run it**:
-   ```bash
-   pip install -r requirements.txt
-   python main.py --mode train --data dataset/ --epochs 50
-   ```
+1. **Copy the prompt above** (from `You are an expert ML systems engineer...` to the end)
+2. **Paste into Claude Opus 4.6** via:
+   - claude.ai (select Opus 4.6 from dropdown)
+   - Or Claude API with `claude-opus-4-6` model
+3. **Wait 10–15 minutes** for full codebase generation
+4. **Save all files** to your project directory
+
+---
+
+## EXPECTED OUTPUT
+
+Claude will generate:
+- ✅ `model_loader.py` (400 lines) — Load all 6 models
+- ✅ `violation_detector.py` (600 lines) — Main inference class
+- ✅ `finetune_helmet.py` (150 lines) — Fine-tune helmet model
+- ✅ `finetune_seatbelt.py` (150 lines) — Fine-tune seatbelt model
+- ✅ `annotate.py` (250 lines) — Draw annotations
+- ✅ `report_generator.py` (300 lines) — Generate reports
+- ✅ `main.py` (200 lines) — CLI interface
+- ✅ `config.yaml` — Training config
+- ✅ `requirements.txt` — Dependencies
+- ✅ `README.md` — Complete documentation
+
+**Total:** ~2,200 lines of production-grade code
+

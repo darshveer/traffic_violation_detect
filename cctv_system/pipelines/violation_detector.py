@@ -300,17 +300,31 @@ class ViolationDetector:
 
         plugin = self.loader.get("triple_rider")
         if plugin.available:
-            for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
-                if d["conf"] >= self.violation_conf:
-                    events.append(self._event("triple_rider", d["conf"], d["box"]))
-            return events
+            names = self._class_names("triple_rider")
+            is_coco = ("car" in names.values() or len(names) == 80)
+            if not is_coco:
+                for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
+                    if d["conf"] >= self.violation_conf:
+                        events.append(self._event("triple_rider", d["conf"], d["box"]))
+                return events
 
         for moto in motorcycles:
             mbox = moto["box"]
-            riders = [
-                p for p in persons if overlap_ratio(p["box"], mbox) >= min_overlap
-                or point_in_box(box_center(p["box"]), [mbox[0], mbox[1] - (mbox[3] - mbox[1]), mbox[2], mbox[3]])
-            ]
+            m_h = mbox[3] - mbox[1]
+            riders = []
+            for p in persons:
+                pbox = p["box"]
+                # 1. Significant bounding box overlap
+                if overlap_ratio(pbox, mbox) >= min_overlap:
+                    riders.append(p)
+                    continue
+                # 2. Heuristic: Person is horizontally aligned and their bottom half (legs/feet) is near the motorcycle
+                px_c = (pbox[0] + pbox[2]) / 2.0
+                if mbox[0] <= px_c <= mbox[2]:
+                    # Check if bottom Y of person is within the motorcycle box, or slightly above it
+                    if mbox[1] - 0.2 * m_h <= pbox[3] <= mbox[3]:
+                        riders.append(p)
+                        
             if len(riders) >= min_riders:
                 conf = min(0.99, moto["conf"] * (len(riders) / min_riders))
                 if conf >= self.violation_conf:
@@ -331,10 +345,14 @@ class ViolationDetector:
         events: List[Dict] = []
         plugin = self.loader.get("red_light")
         if plugin.available:
-            for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
-                if d["conf"] >= self.violation_conf:
-                    events.append(self._event("red_light_violation", d["conf"], d["box"]))
-            return events
+            names = self._class_names("red_light")
+            is_coco = ("car" in names.values() or len(names) == 80)
+            if not is_coco:
+                for d in self._predict(plugin.model, frame, self.violation_conf)[0]:
+                    if d["conf"] >= self.violation_conf:
+                        events.append(self._event("red_light_violation", d["conf"], d["box"]))
+                return events
+
 
         if not self._any_red_light(frame, lights):
             return events
@@ -390,7 +408,7 @@ class ViolationDetector:
                 continue
             heading = np.array([dx, dy], dtype=np.float32) / (disp + 1e-9)
             alignment = float(np.dot(heading, allowed))
-            if alignment < -0.3:  # moving against allowed direction
+            if alignment < -0.6:  # moving against allowed direction
                 conf = min(0.99, 0.6 + 0.39 * min(1.0, -alignment))
                 if conf >= self.violation_conf:
                     events.append(
@@ -577,8 +595,9 @@ class ViolationDetector:
         skip_frames: Optional[int] = None,
         annotate: bool = True,
         resume: bool = True,
+        show: bool = False,
     ) -> Dict[str, Any]:
-        """Process a video with frame-skipping, annotation and checkpointing.
+        """Process a video with frame-skipping, annotation, live window and checkpointing.
 
         Parameters
         ----------
@@ -592,6 +611,8 @@ class ViolationDetector:
             Write an annotated video / frames.
         resume : bool
             Resume from a checkpoint if one exists in ``output_path``.
+        show : bool
+            Show a pop up live window during inference.
 
         Returns
         -------
@@ -652,17 +673,37 @@ class ViolationDetector:
                 self._append_record(records_path, slim)
 
                 if annotate:
-                    ann = annotate_frame(frame, result["detections"], ts)
+                    ann = annotate_frame(frame, result["detections"], ts, result["violations"])
                     if writer is not None:
                         writer.write(ann)
                     if save_frames and result["violations"]:
                         cv2.imwrite(str(frames_dir / f"frame_{idx:06d}.jpg"), ann)
+                else:
+                    ann = frame.copy()
+                    if show and result["violations"]:
+                        from evidence.annotate import draw_violation_overlay
+                        active_violations = [v for v in result["violations"] if v.get("is_violation", True)]
+                        if active_violations:
+                            counts = {}
+                            for v in active_violations:
+                                vtype = v["type"]
+                                counts[vtype] = counts.get(vtype, 0) + 1
+                            draw_violation_overlay(ann, counts, cv2)
+
+                if show:
+                    cv2.imshow("CCTV Traffic Violation Detection", ann)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        logger.info("Live display stopped by user.")
+                        break
 
                 if idx % ckpt_every == 0:
                     save_checkpoint(str(ckpt_path), {"last_frame": idx})
         finally:
             if writer is not None:
                 writer.release()
+            if show:
+                cv2.destroyAllWindows()
+
 
         save_checkpoint(str(ckpt_path), {"last_frame": -1, "done": True})
         logger.info("Video done: %d frames processed.", len(records))
