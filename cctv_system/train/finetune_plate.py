@@ -58,7 +58,7 @@ def main(epochs=15, batch=32, workers=16, patience=5):
     data = get_data()
     model = YOLO("yolo11n.pt")
     res = model.train(data=str(data), epochs=epochs, batch=batch, imgsz=640,
-                      device=0, workers=workers, patience=patience, cache="ram", plots=False,
+                      device=0, workers=workers, patience=patience, cache=False, plots=False,
                       project=str(BASE / "runs_plate"),
                       name="train", exist_ok=True, save=True, save_period=5, verbose=True)
     best = Path(getattr(res, "save_dir", BASE / "runs_plate/train")) / "weights" / "best.pt"

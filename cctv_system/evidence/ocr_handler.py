@@ -9,10 +9,16 @@ pipeline keeps running. An optional EasyOCR fallback is used if present.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Optional
 
 import numpy as np
+
+# Disable oneDNN/MKLDNN before paddle imports: paddle 3.x's CPU PIR executor
+# raises NotImplementedError (ConvertPirAttribute2RuntimeAttribute ... onednn)
+# on the OCR models otherwise. Must be set before paddlepaddle is imported.
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
 logger = logging.getLogger("cctv")
 
@@ -47,7 +53,19 @@ class OCRHandler:
         try:
             from paddleocr import PaddleOCR
 
-            self._engine = PaddleOCR(use_angle_cls=True, lang=self.lang)
+            # Try newest signature first (3.x with mkldnn off), then older ones.
+            for kwargs in (
+                {"lang": self.lang, "enable_mkldnn": False},
+                {"use_angle_cls": True, "lang": self.lang},
+                {"lang": self.lang},
+            ):
+                try:
+                    self._engine = PaddleOCR(**kwargs)
+                    break
+                except Exception:  # noqa: BLE001 - try next signature
+                    continue
+            if self._engine is None:
+                raise RuntimeError("no compatible PaddleOCR signature")
             self._backend = "paddleocr"
             logger.info("OCRHandler: PaddleOCR initialised (lang=%s).", self.lang)
             return
@@ -102,9 +120,24 @@ class OCRHandler:
             return ""
 
     def _read_paddle(self, crop: np.ndarray) -> str:
+        candidates: list[tuple[str, float]] = []
+        # PaddleOCR 3.x: .predict() -> list of dict-like results with
+        # 'rec_texts' / 'rec_scores'. Preferred path.
+        try:
+            for res in (self._engine.predict(crop) or []):
+                d = res if hasattr(res, "get") else getattr(res, "res", {})
+                texts = d.get("rec_texts") if hasattr(d, "get") else None
+                scores = d.get("rec_scores") if hasattr(d, "get") else None
+                if texts:
+                    for t, s in zip(texts, scores or [1.0] * len(texts)):
+                        c = float(s) if s is not None else 1.0
+                        if c >= self.min_conf:
+                            candidates.append((self._clean(t), c))
+                    return self._best(candidates)
+        except (AttributeError, TypeError):
+            pass  # fall back to legacy 2.x .ocr() API below
         result = self._engine.ocr(crop, cls=True)
-        candidates = []
-        # PaddleOCR returns [[ [box, (text, conf)], ... ]] (nested per image).
+        # 2.x: [[ [box, (text, conf)], ... ]] (nested per image).
         for page in result or []:
             for line in page or []:
                 text, conf = line[1][0], float(line[1][1])

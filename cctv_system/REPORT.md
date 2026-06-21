@@ -56,12 +56,19 @@ _Generated 2026-06-21. Models run on CUDA (RTX 4060/3060) and Apple-Silicon MPS;
   crop, then OCR runs on the tight plate region. Integrated into `_read_plates`
   (`models.plate_detector`); falls back to whole-vehicle OCR when absent. A YOLO11n plate
   detector was fine-tuned on the RTX 3060 (Roboflow `license-plate-recognition-rxg4e`, 21k imgs).
-- **Measured improvement** on the 1440p ANPR clip (EasyOCR on the Mac): plate localisation
-  lifted the read-rate from **3.1% (garbage) → 17.5%** with a **1-epoch** detector, and
-  consistent real plates began to appear across frames (e.g. `NAIJNRU`, `GXIS0GJ`). This climbs
-  further as the detector trains to convergence and with **PaddleOCR** (better than EasyOCR for
-  plates, available on the Py≤3.12 boxes). The detector continues training; pull the final
-  `best.pt` from the box into `models/plugins/license_plate_detector.pt`.
+- **Plate detector fully trained** (yolo11n, Roboflow rxg4e 21k imgs): **mAP50 0.982,
+  precision 0.985, recall 0.959** — localisation is essentially solved. Deployed to
+  `models/plugins/license_plate_detector.pt`.
+- **Recognition solved with PaddleOCR.** EasyOCR (the only option on Python 3.14) mis-reads
+  small/angled plates (garbage like `HAI3MRU`). Switching the recognition stage to **PaddleOCR
+  (PP-OCRv6)** on a Python 3.12 box gives **correct reads**: on the 1440p ANPR clip, the trained
+  detector + PaddleOCR produced a **100% read-rate (67/67 localised plates)** with real plate
+  strings — e.g. `NA13NRU`, `MW51VSU` (valid UK plates), vs EasyOCR's garbage on the same crops.
+  - Two fixes were required and are now in `OCRHandler`: (a) **disable oneDNN**
+    (`FLAGS_use_mkldnn=0`) — paddle 3.x's CPU PIR executor crashes otherwise; (b) parse the
+    **PaddleOCR 3.x `predict()`** output (`rec_texts`/`rec_scores`), with a 2.x `.ocr()` fallback.
+  - Net: run the pipeline on a Py≤3.12 host (PaddleOCR auto-selected) for accurate ANPR; the Mac
+    (Py3.14) auto-falls back to EasyOCR (works, lower accuracy).
 
 ### Other fine-tuning recommendations
 | Item | Issue | Action (fits in budget) |
