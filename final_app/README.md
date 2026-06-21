@@ -40,6 +40,13 @@ clusters detections into time-stamped clips, and saves annotated snapshots.
 The bundled `models/` hold the trained weights (base YOLO11n, helmet, seatbelt,
 triple-rider, red-light, license-plate detector).
 
+## Deploying to your own server / website
+The model weights in `models/` are **not** committed to git (too large). They
+live on disk in this folder, so deploy by **copying the whole `final_app/`
+folder** (rsync/scp/zip) to your host, then `./run.sh`. (A `git clone` alone
+won't include the weights.) Put it behind nginx/Caddy as a reverse proxy to
+`127.0.0.1:8000` and add HTTPS for a public site.
+
 ## OCR note
 - **Python ≤ 3.12** → PaddleOCR (PP-OCRv6) is used — accurate plate reads
   (e.g. `NA13NRU`). oneDNN is auto-disabled (`FLAGS_use_mkldnn=0`).
