@@ -1,0 +1,20 @@
+# Core ML / pipeline
+torch
+torchvision
+ultralytics
+opencv-python-headless
+numpy
+scipy
+pyyaml
+certifi
+
+# OCR — EasyOCR works everywhere; PaddleOCR (more accurate on plates) needs Py<=3.12
+easyocr
+paddleocr ; python_version < "3.13"
+paddlepaddle ; python_version < "3.13"
+
+# Web app
+fastapi
+uvicorn[standard]
+python-multipart
+yt-dlp

@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Traffic Violation Detection</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141a2e; --panel2:#1b2440; --line:#26304f;
+    --txt:#e8edf7; --muted:#93a0bd; --accent:#6366f1; --accent2:#22d3ee;
+    --ok:#22c55e; --warn:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1b2350 0%,var(--bg) 55%);color:var(--txt);min-height:100vh}
+  a{color:var(--accent2)}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+  .logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:grid;place-items:center;font-size:22px;box-shadow:0 6px 20px rgba(99,102,241,.4)}
+  h1{font-size:22px;margin:0;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:13px;margin:2px 0 22px}
+  .card{background:linear-gradient(180deg,var(--panel),#10172b);border:1px solid var(--line);
+    border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tab{padding:8px 16px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);
+    cursor:pointer;color:var(--muted);font-weight:600;font-size:13px}
+  .tab.active{color:#fff;background:linear-gradient(135deg,var(--accent),#4f46e5);border-color:transparent}
+  .pane{display:none}.pane.active{display:block}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:34px;text-align:center;cursor:pointer;
+    transition:.15s;background:var(--panel2)}
+  .drop.drag{border-color:var(--accent);background:#1d2748}
+  .drop b{color:#fff}
+  input[type=text],input[type=url]{width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);
+    background:#0e1426;color:var(--txt);font-size:14px;outline:none}
+  input:focus{border-color:var(--accent)}
+  .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  .btn{padding:12px 22px;border-radius:11px;border:none;cursor:pointer;font-weight:700;font-size:14px;
+    color:#fff;background:linear-gradient(135deg,var(--accent),#4f46e5);box-shadow:0 6px 18px rgba(79,70,229,.4)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .quality{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+  .quality input{accent-color:var(--accent)}
+  .muted{color:var(--muted)}
+  .hidden{display:none}
+  /* progress */
+  #progress{margin-top:22px}
+  .bar{height:12px;border-radius:8px;background:#0e1426;overflow:hidden;border:1px solid var(--line)}
+  .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s}
+  .status{display:flex;justify-content:space-between;margin-top:8px;font-size:13px;color:var(--muted)}
+  .spin{width:15px;height:15px;border:2px solid var(--line);border-top-color:var(--accent2);border-radius:50%;
+    display:inline-block;animation:sp 1s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* results */
+  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:20px;margin-top:22px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  video{width:100%;border-radius:12px;background:#000;display:block}
+  .timeline{position:relative;height:34px;margin-top:12px;border-radius:8px;background:#0e1426;border:1px solid var(--line)}
+  .mark{position:absolute;top:4px;width:4px;height:26px;border-radius:3px;cursor:pointer;transform:translateX(-2px)}
+  .mark:hover{width:6px}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:104px}
+  .stat .n{font-size:22px;font-weight:800}
+  .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .chip{padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--line);
+    background:var(--panel2);color:var(--muted);display:flex;align-items:center;gap:7px}
+  .chip.on{color:#fff;border-color:transparent}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .gallery{display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:6px}
+  .ev{display:flex;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;
+    cursor:pointer;transition:.12s}
+  .ev:hover{border-color:var(--accent);transform:translateX(2px)}
+  .ev img{width:118px;height:74px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+  .ev .meta{flex:1;min-width:0}
+  .ev .t{font-weight:700;display:flex;align-items:center;gap:8px}
+  .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;color:#fff}
+  .ev .time{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .ev .conf{font-size:12px;color:var(--muted)}
+  .plate{font-family:ui-monospace,Menlo,monospace;background:#0e1426;border:1px solid var(--line);
+    padding:1px 7px;border-radius:6px;color:#fff;letter-spacing:1px}
+  .secttitle{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:4px 0 10px}
+  .pill{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+    padding:4px 9px;border-radius:999px}
+  .err{background:#3b1320;border:1px solid #7f1d1d;color:#fecaca;border-radius:12px;padding:14px;margin-top:18px}
+  .empty{color:var(--muted);text-align:center;padding:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🚦</div>
+    <div>
+      <h1>Traffic Violation Detection</h1>
+      <div class="sub">Helmet · Seatbelt · Triple-riding · Red-light · Wrong-side · License-plate OCR</div>
+    </div>
+  </header>
+
+  <!-- INPUT -->
+  <div class="card" id="inputCard">
+    <div class="tabs">
+      <div class="tab active" data-tab="upload">⬆️ Upload video</div>
+      <div class="tab" data-tab="youtube">▶️ YouTube URL</div>
+    </div>
+    <div class="pane active" id="pane-upload">
+      <div class="drop" id="drop">
+        <div style="font-size:30px">🎞️</div>
+        <p><b>Drop a video here</b> or click to browse<br><span class="muted" id="fname">MP4 / MOV / AVI</span></p>
+        <input type="file" id="file" accept="video/*" class="hidden"/>
+      </div>
+    </div>
+    <div class="pane" id="pane-youtube">
+      <input type="url" id="yturl" placeholder="https://www.youtube.com/watch?v=…"/>
+      <p class="muted" style="font-size:12.5px;margin:8px 2px 0">Public videos only. Downloaded at ≤720p for speed.</p>
+    </div>
+    <div class="row">
+      <button class="btn" id="go">Analyze</button>
+      <div class="quality">
+        <span>Speed</span>
+        <input type="range" id="skip" min="2" max="20" value="8"/>
+        <span>Accuracy</span>
+        <span class="pill" id="skipv">every 8th frame</span>
+      </div>
+    </div>
+    <div id="progress" class="hidden">
+      <div class="bar"><i id="barfill"></i></div>
+      <div class="status"><span id="statusmsg"><span class="spin"></span>Starting…</span><span id="pct">0%</span></div>
+    </div>
+    <div id="errbox" class="err hidden"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results" class="hidden">
+    <div class="grid">
+      <div class="card">
+        <video id="player" controls playsinline></video>
+        <div class="timeline" id="timeline"></div>
+        <div class="stats" id="stats"></div>
+        <div style="margin-top:14px" id="meta" class="muted"></div>
+      </div>
+      <div class="card">
+        <div class="secttitle">Detections <span class="pill" id="evcount"></span></div>
+        <div class="chips" id="filters"></div>
+        <div class="gallery" id="gallery"></div>
+        <div id="plates" style="margin-top:16px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let activeTab = "upload", chosenFile = null, pollTimer = null, DATA = null, FILTER = null;
+
+// tabs
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  activeTab = t.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  $("#pane-upload").classList.toggle("active", activeTab === "upload");
+  $("#pane-youtube").classList.toggle("active", activeTab === "youtube");
+});
+
+// upload UX
+const drop = $("#drop"), fileInput = $("#file");
+drop.onclick = () => fileInput.click();
+fileInput.onchange = () => { if (fileInput.files[0]) { chosenFile = fileInput.files[0]; $("#fname").textContent = chosenFile.name; } };
+["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("drag"); }));
+["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", ev => { const f = ev.dataTransfer.files[0]; if (f) { chosenFile = f; $("#fname").textContent = f.name; } });
+
+$("#skip").oninput = e => $("#skipv").textContent = "every " + e.target.value + "th frame";
+
+$("#go").onclick = async () => {
+  const fd = new FormData();
+  fd.append("skip_frames", $("#skip").value);
+  if (activeTab === "upload") {
+    if (!chosenFile) return alertErr("Please choose a video file.");
+    fd.append("file", chosenFile);
+  } else {
+    const u = $("#yturl").value.trim();
+    if (!u) return alertErr("Please paste a YouTube URL.");
+    fd.append("youtube_url", u);
+  }
+  $("#errbox").classList.add("hidden");
+  $("#results").classList.add("hidden");
+  $("#go").disabled = true;
+  $("#progress").classList.remove("hidden");
+  setBar(3, "Uploading…");
+  try {
+    const r = await fetch("/api/analyze", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || "Request failed");
+    const { job_id } = await r.json();
+    poll(job_id);
+  } catch (e) { alertErr(e.message); $("#go").disabled = false; }
+};
+
+function poll(id) {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    const st = await (await fetch("/api/jobs/" + id)).json();
+    const p = st.progress || 0;
+    if (st.status === "downloading") setBar(Math.max(p,5), "⬇️ Downloading from YouTube…");
+    else if (st.status === "analyzing") setBar(Math.max(p,8), "🔎 Analyzing — " + p + "%");
+    else if (st.status === "queued") setBar(4, "Queued…");
+    if (st.status === "done") { clearInterval(pollTimer); $("#go").disabled = false; render(st.result); }
+    if (st.status === "error") { clearInterval(pollTimer); $("#go").disabled = false; alertErr(st.message); }
+  }, 1000);
+}
+
+function setBar(p, msg) {
+  $("#barfill").style.width = p + "%"; $("#pct").textContent = Math.round(p) + "%";
+  $("#statusmsg").innerHTML = '<span class="spin"></span>' + msg;
+}
+function alertErr(m) { const b = $("#errbox"); b.textContent = "⚠️ " + m; b.classList.remove("hidden"); $("#progress").classList.add("hidden"); }
+
+function render(d) {
+  DATA = d; FILTER = null;
+  $("#progress").classList.add("hidden");
+  $("#results").classList.remove("hidden");
+  const v = $("#player"); v.src = d.video_url; v.load();
+  const dur = d.meta.duration || 1;
+
+  // stats
+  const bt = d.summary.by_type;
+  $("#stats").innerHTML =
+    `<div class="stat"><div class="n">${d.summary.total_events}</div><div class="l">Total events</div></div>` +
+    Object.entries(bt).map(([t,o]) =>
+      `<div class="stat"><div class="n" style="color:${o.color}">${o.events}</div><div class="l">${o.label}</div></div>`).join("");
+
+  // meta
+  $("#meta").innerHTML =
+    `<span class="pill">⏱ ${dur}s</span> <span class="pill">🎥 ${d.meta.width}×${d.meta.height} @${d.meta.fps}fps</span> ` +
+    `<span class="pill">🖥 ${d.summary.device}</span> <span class="pill">🔤 OCR: ${d.summary.ocr_backend}</span> ` +
+    `<span class="pill">🪟 every ${d.meta.skip_frames}th frame</span>`;
+
+  // timeline markers
+  $("#timeline").innerHTML = d.events.map((e,i) =>
+    `<div class="mark" style="left:${(e.start/dur*100).toFixed(2)}%;background:${e.color}" title="${e.label} @ ${e.start_str}" onclick="seek(${e.start})"></div>`).join("");
+
+  // filter chips
+  $("#filters").innerHTML =
+    `<div class="chip on" onclick="setFilter(null,this)">All (${d.events.length})</div>` +
+    Object.entries(bt).map(([t,o]) =>
+      `<div class="chip" onclick="setFilter('${t}',this)"><span class="dot" style="background:${o.color}"></span>${o.label} (${o.events})</div>`).join("");
+
+  // plates
+  $("#plates").innerHTML = d.summary.top_plates.length
+    ? `<div class="secttitle">Plates read (${d.summary.top_plates.length})</div>` +
+      d.summary.top_plates.map(p => `<span class="plate" style="margin:0 6px 6px 0;display:inline-block">${p.plate}</span>`).join("")
+    : "";
+
+  drawGallery();
+  $("#results").scrollIntoView({behavior:"smooth"});
+}
+
+function setFilter(t, el) {
+  FILTER = t;
+  document.querySelectorAll("#filters .chip").forEach(c => c.classList.remove("on"));
+  el.classList.add("on");
+  drawGallery();
+}
+
+function drawGallery() {
+  const evs = DATA.events.filter(e => !FILTER || e.type === FILTER);
+  $("#evcount").textContent = evs.length + " shown";
+  if (!evs.length) { $("#gallery").innerHTML = '<div class="empty">No detections of this type 🎉</div>'; return; }
+  $("#gallery").innerHTML = evs.map(e => `
+    <div class="ev" onclick="seek(${e.start})">
+      <img src="${DATA.video_url.replace('/video','/frames/')}${e.snapshot.split('/').pop()}" loading="lazy"/>
+      <div class="meta">
+        <div class="t"><span class="badge" style="background:${e.color}">${e.label}</span></div>
+        <div class="time">🕑 ${e.start_str}${e.end_str!==e.start_str? " – "+e.end_str:""} · ${e.count} frame(s)</div>
+        <div class="conf">confidence ${(e.peak_conf*100).toFixed(0)}%${e.plate? ' · <span class="plate">'+e.plate+'</span>':''}</div>
+      </div>
+    </div>`).join("");
+}
+
+function seek(t) { const v = $("#player"); v.currentTime = Math.max(0, t - 0.3); v.play().catch(()=>{}); window.scrollTo({top:0,behavior:"smooth"}); }
+</script>
+</body>
+</html>

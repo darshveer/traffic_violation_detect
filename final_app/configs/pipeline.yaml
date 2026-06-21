@@ -1,0 +1,63 @@
+device: auto
+half: false
+imgsz: 640
+models:
+  base: models/yolo11n.pt
+  helmet: models/helmet/helmet_finetuned.pt
+  seatbelt: models/seatbelt/seatbelt_finetuned.pt
+  triple_rider: models/plugins/triple_rider.pt
+  red_light: models/plugins/red_light_yolov8m.pt
+  wrong_side: null
+  plate_detector: models/plugins/license_plate_detector.pt
+  helmet_plugin: models/plugins/helmet_haiderzm.pt
+thresholds:
+  base_conf: 0.35
+  iou: 0.5
+  violation_conf: 0.6
+  helmet_conf: 0.5
+  seatbelt_conf: 0.5
+triple_rider:
+  min_riders: 3
+  overlap_ratio: 0.15
+  conf: 0.35   # confidence threshold for the dedicated triple-rider model
+red_light:
+  stop_line:
+  - 0.0
+  - 0.55
+  - 1.0
+  - 0.65
+  red_hsv_ratio: 0.18
+wrong_side:
+  # Allowed direction of travel in image coords [dx, dy]; MUST be calibrated per
+  # camera. Default [0,1] = traffic should move downward (toward bottom of frame).
+  # Use scripts/calibrate_wrong_side.py to estimate this from a sample clip.
+  allowed_direction:
+  - 0.0
+  - 1.0
+  min_track_frames: 8
+  min_displacement: 40
+  alignment_threshold: 0.5     # net heading must oppose allowed by at least this
+  step_consistency: 0.7        # fraction of per-step motions that must oppose allowed
+  ignore_classes:              # classes excluded from wrong-side analysis
+  - motorcycle
+  - bicycle
+  roi: null                    # optional [x1,y1,x2,y2] normalised road band (0..1)
+ocr:
+  enabled: true
+  lang: en
+  min_plate_conf: 0.5
+  run_on:
+  - car
+  - motorcycle
+  - bus
+  - truck
+video:
+  skip_frames: 5
+  checkpoint_every: 200
+  write_annotated: true
+  save_frames: true
+tracking:
+  backend: sort
+  max_age: 30
+  min_hits: 3
+  iou_threshold: 0.3
